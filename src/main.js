@@ -2,113 +2,130 @@ import * as THREE from 'three';
 import { Player } from './player.js';
 import { World } from './world.js';
 
-// Configuração da Cena
+// ==========================================
+// 1. CONFIGURAÇÃO BASE DA CENA
+// ==========================================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb); // Azul céu
 
-// Câmara (Perspetiva Isométrica)
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(5, 10, 15);
-camera.lookAt(0, 0, 5);
+// Câmara com FOV de 40 para o "Efeito Crossy Road" (Achatamento isométrico)
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-// Renderizador
+// Renderizador com sombras de alta qualidade
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-
-// Configurações comuns
-const aspect = window.innerWidth / window.innerHeight;
-const d = 20; // Alcance da visão ortográfica
-
-// 1. Câmara de Perspetiva (Atual)
-const perspectiveCamera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
-perspectiveCamera.position.set(10, 15, 10);
-perspectiveCamera.lookAt(0, 0, 0);
-
-// 2. Câmara Ortográfica (Vista de Topo)
-const orthographicCamera = new THREE.OrthographicCamera(
-    -d * aspect, d * aspect, d, -d, 1, 1000
-);
-orthographicCamera.position.set(0, 20, 0); // Posicionada no topo
-orthographicCamera.lookAt(0, 0, 0);
-
-// Variável para controlar qual câmara está ativa
-let activeCamera = perspectiveCamera;
-
-window.addEventListener('keydown', (event) => {
-    if (event.key.toLowerCase() === 'c') {
-        if (activeCamera === perspectiveCamera) {
-            activeCamera = orthographicCamera;
-            console.log("Câmara Ortográfica Ativa");
-        } else {
-            activeCamera = perspectiveCamera;
-            console.log("Câmara de Perspetiva Ativa");
-        }
-    }
-});
-
-window.addEventListener('resize', () => {
-    const newAspect = window.innerWidth / window.innerHeight;
-
-    // Atualizar Perspetiva
-    perspectiveCamera.aspect = newAspect;
-    perspectiveCamera.updateProjectionMatrix();
-
-    // Atualizar Ortográfica
-    orthographicCamera.left = -d * newAspect;
-    orthographicCamera.right = d * newAspect;
-    orthographicCamera.top = d;
-    orthographicCamera.bottom = -d;
-    orthographicCamera.updateProjectionMatrix();
-
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true; // Ativar sombras
+renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// Iluminação (Gold Standard)
+// ==========================================
+// 2. ILUMINAÇÃO (Gold Standard)
+// ==========================================
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
 directionalLight.position.set(10, 20, 10);
 directionalLight.castShadow = true;
-// Refinar qualidade da sombra
 directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 50;
+// Ajustar a área de sombra para cobrir o cenário
+directionalLight.shadow.camera.left = -20;
+directionalLight.shadow.camera.right = 20;
+directionalLight.shadow.camera.top = 20;
+directionalLight.shadow.camera.bottom = -20;
 scene.add(directionalLight);
 
-const hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.5);
+const hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.3);
 scene.add(hemisphereLight);
 
-// Inicialização dos Objetos
+// ==========================================
+// 3. INSTANCIAÇÃO DO MUNDO E JOGADOR
+// ==========================================
 const world = new World(scene);
 const player = new Player(scene);
 
-// Controlos de Teclado
+// ==========================================
+// 4. LÓGICA DE CÂMARA E TRANSIÇÃO
+// ==========================================
+let cameraMode = 'topDown'; // 'topDown' ou 'isometric'
+let transitionProgress = 0; // 0 = TopDown, 1 = Isometric
+const transitionSpeed = 0.03; // Velocidade da transição da câmara
+
+// Configurações das posições relativas (Offsets)
+const config = {
+    topDown: { x: 0, y: 20, z: 0 },
+    isometric: { x: 12, y: 15, z: 12 } // Diagonal estilo Crossy Road
+};
+
+// ==========================================
+// 5. CONTROLOS (Teclado)
+// ==========================================
 window.addEventListener('keydown', (event) => {
-    switch(event.key) {
-        case 'ArrowUp':    player.move('up');    break;
-        case 'ArrowDown':  player.move('down');  break;
-        case 'ArrowLeft':  player.move('left');  break;
-        case 'ArrowRight': player.move('right'); break;
+    const key = event.key.toLowerCase();
+
+    // Alternar modo de câmara
+    if (key === 'c') {
+        cameraMode = (cameraMode === 'topDown') ? 'isometric' : 'topDown';
+    }
+    
+    // Movimento do jogador
+    switch(key) {
+        case 'w': case 'arrowup':    player.move('up');    break;
+        case 's': case 'arrowdown':  player.move('down');  break;
+        case 'a': case 'arrowleft':  player.move('left');  break;
+        case 'd': case 'arrowright': player.move('right'); break;
     }
 });
 
-// Loop de Animação
+// ==========================================
+// 6. LOOP DE ANIMAÇÃO
+// ==========================================
 function animate() {
     requestAnimationFrame(animate);
-    perspectiveCamera.position.z = player.mesh.position.z + 10;
-    perspectiveCamera.lookAt(player.mesh.position);
-    renderer.render(scene, activeCamera);
+
+    // --- Atualizar Progresso da Transição ---
+    if (cameraMode === 'isometric' && transitionProgress < 1) {
+        transitionProgress += transitionSpeed;
+    } else if (cameraMode === 'topDown' && transitionProgress > 0) {
+        transitionProgress -= transitionSpeed;
+    }
+    
+    // Garantir que o valor fica estritamente entre 0 e 1 (Clamp)
+    transitionProgress = Math.max(0, Math.min(1, transitionProgress));
+
+    // --- Interpolação (Lerp) dos Offsets da Câmara ---
+    const currentOffset = {
+        x: THREE.MathUtils.lerp(config.topDown.x, config.isometric.x, transitionProgress),
+        y: THREE.MathUtils.lerp(config.topDown.y, config.isometric.y, transitionProgress),
+        z: THREE.MathUtils.lerp(config.topDown.z, config.isometric.z, transitionProgress)
+    };
+
+    // --- Aplicar Posição à Câmara (Seguindo o Jogador) ---
+    camera.position.x = player.mesh.position.x + currentOffset.x;
+    camera.position.y = player.mesh.position.y + currentOffset.y;
+    camera.position.z = player.mesh.position.z + currentOffset.z;
+
+    // Fazer a câmara olhar sempre para a posição central da galinha
+    camera.lookAt(
+        player.mesh.position.x, 
+        player.mesh.position.y, 
+        player.mesh.position.z
+    );
+
+    renderer.render(scene, camera);
 }
 
-// Ajuste de Janela
+// ==========================================
+// 7. RESPONSIVIDADE (Redimensionar Janela)
+// ==========================================
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Iniciar o jogo
 animate();

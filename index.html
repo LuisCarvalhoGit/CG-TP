@@ -15,6 +15,30 @@
 <body>
     <div id="info">Mover: WASD | Câmara: C</div>
 
+    <!-- Coloca isto dentro do <body>, antes de carregares os scripts -->
+    <div id="ui-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        
+        <!-- MENU INICIAL -->
+        <div id="main-menu" style="pointer-events: auto; background: rgba(255,255,255,0.9); padding: 40px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+            <h1 style="font-family: sans-serif; color: #333;">Crossy Clone</h1>
+            <p>Escolhe o teu personagem:</p>
+            
+            <select id="char-select" style="font-size: 18px; padding: 10px; margin-bottom: 20px;">
+                <option value="chicken">Galinha (Voo Curto)</option>
+                <option value="frog">Sapo (Anfíbio)</option>
+                <option value="cat">Gato (Sete Vidas)</option>
+            </select>
+            <br>
+            <button id="btn-start" style="font-size: 20px; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Começar Jogo</button>
+        </div>
+
+        <!-- UI DO JOGO (Escondida no início) -->
+        <div id="game-ui" style="display: none; position: absolute; top: 20px; left: 20px; pointer-events: none;">
+            <h2 style="color: white; text-shadow: 2px 2px 0 #000; font-family: sans-serif;">Energia: <span id="energy-counter">0/10</span></h2>
+        </div>
+
+    </div>
+
     <script type="importmap">
         {
             "imports": {

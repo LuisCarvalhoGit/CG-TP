@@ -8,6 +8,8 @@ import { World } from './world.js';
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb); // Azul céu
 
+scene.fog = new THREE.Fog(0x87ceeb, 15, 50);
+
 // Câmara com FOV de 40 para o "Efeito Crossy Road" (Achatamento isométrico)
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -156,6 +158,8 @@ function animate() {
         camera.position.z = player.mesh.position.z + currentOffset.z;
         camera.lookAt(player.mesh.position.x, player.mesh.position.y, player.mesh.position.z);
 
+        world.updateMap(player.mesh.position.z);
+
         // Atualizar o mundo (carros a mover-se)
         world.update();
 
@@ -169,14 +173,23 @@ function animate() {
 
             if (playerBox.intersectsBox(carBox)) {
                 console.log("GAME OVER! Foste atropelado!");
-                // Reset do jogador
+                
+                // 1. Limpar e reconstruir o mundo!
+                world.reset();
+
+                // 2. Colocar o jogador na relva inicial
                 player.mesh.position.set(0, 0, 5);
                 player.isMoving = false;
                 
-                // Reset da energia ao morrer
+                // 3. Reset da energia
                 player.jumps = 0;
                 player.abilityReady = false;
                 atualizarUIEnergia();
+
+                // 4. (Opcional e Recomendado) Voltar ao Menu Inicial!
+                gameState = 'MENU';
+                document.getElementById('main-menu').style.display = 'block';
+                document.getElementById('game-ui').style.display = 'none';
             }
         }
     } else {

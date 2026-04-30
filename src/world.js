@@ -4,9 +4,10 @@ export class World {
     constructor(scene) {
         this.scene = scene;
         this.lanes = [];
-        this.laneWidth = 35; // Largura do mundo (para os carros terem espaço para aparecer e desaparecer)
+        this.laneWidth = 80; // Largura do mundo (para os carros terem espaço para aparecer e desaparecer)
         this.cars = []; // Lista para atualizar os carros em cada frame
         this.obstacles = new Set();
+        this.furthestZ = -30;
 
         this.createInitialMap();
     }
@@ -61,7 +62,7 @@ export class World {
 
         for (let i = 0; i < numTrees; i++) {
             // Posição X aleatória baseada em inteiros (para respeitar a grelha)
-            let x = Math.floor(Math.random() * 15) - 7; 
+           let x = Math.floor(Math.random() * 50) - 25; 
             
             // Evitar sobreposições e evitar meter árvores exatamenteno X=0 no início
             if (occupiedPositions.has(x) || (x === 0 && laneGroup.position.z > -5)) continue; 
@@ -113,7 +114,7 @@ export class World {
         const car = this.createCarMesh(color);
         
         // Posicionar na ponta da estrada
-        const startX = 15;
+        const startX = 40;
         car.position.x = direction === 1 ? -startX : startX; 
         
         // Virar o modelo do carro na direção em que se move
@@ -122,7 +123,12 @@ export class World {
         laneGroup.add(car);
 
         // Adicionar à lista de atualização para animar no loop
-        this.cars.push({ mesh: car, direction: direction, speed: speed });
+        this.cars.push({ 
+            mesh: car, 
+            direction: direction, 
+            speed: speed, 
+            laneZ: laneGroup.position.z // Precisamos disto para limpar os carros antigos mais tarde
+        });
     }
 
     createCarMesh(color) {
@@ -158,7 +164,7 @@ export class World {
             carData.mesh.position.x += carData.speed * carData.direction;
 
             // Se o carro sair do mapa de um lado, reaparece do outro ("Wrap around")
-            const limit = 16;
+            const limit = 42;
             if (carData.direction === 1 && carData.mesh.position.x > limit) {
                 carData.mesh.position.x = -limit;
             } else if (carData.direction === -1 && carData.mesh.position.x < -limit) {
@@ -167,7 +173,67 @@ export class World {
         });
     }
 
+    // ==========================================
+    // RENOVAÇÃO DO MAPA (Cenário Infinito)
+    // ==========================================
+    updateMap(playerZ) {
+        // 1. Gerar novas faixas à frente do jogador (Renderiza 35 blocos à frente)
+        const targetZ = Math.floor(playerZ) - 35; 
+        
+        while (this.furthestZ > targetZ) {
+            this.furthestZ--; // Avança um bloco para a frente (valores negativos em Z)
+            
+            // Lógica aleatória para a nova faixa
+            const type = Math.random() > 0.4 ? 'road' : 'grass';
+            this.createLane(this.furthestZ, type, false);
+        }
+
+        // 2. Limpar faixas que ficaram para trás (Mantém apenas 10 blocos atrás)
+        const cleanupZ = Math.floor(playerZ) + 30;
+
+        // Fazemos o loop de trás para a frente quando apagamos itens de um array
+        for (let i = this.lanes.length - 1; i >= 0; i--) {
+            const lane = this.lanes[i];
+            
+            // Se a faixa estiver muito atrás do jogador
+            if (lane.z > cleanupZ) {
+                // A. Remover da cena gráfica do Three.js
+                this.scene.remove(lane.group);
+
+                // B. Remover árvores do sistema de colisões
+                for (const obs of this.obstacles) {
+                    if (obs.endsWith(`,${lane.z}`)) {
+                        this.obstacles.delete(obs);
+                    }
+                }
+
+                // C. Remover os carros desta faixa da lista de updates e colisões
+                this.cars = this.cars.filter(car => car.laneZ !== lane.z);
+
+                // D. Remover do array de faixas ativas
+                this.lanes.splice(i, 1);
+            }
+        }
+    }
+
     isObstacle(x, z) {
         return this.obstacles.has(`${x},${z}`); // Devolve true se houver árvore nesta coordenada
+    }
+
+    // ==========================================
+    // REINICIAR O MAPA (Game Over)
+    // ==========================================
+    reset() {
+        // 1. Apagar graficamente todas as faixas que existem
+        this.lanes.forEach(lane => this.scene.remove(lane.group));
+        
+        // 2. Limpar os dados lógicos
+        this.lanes = [];
+        this.cars = [];
+        this.obstacles.clear();
+        
+        // 3. Repor o contador de distância e gerar novamente
+        this.furthestZ = -30;
+        this.createInitialMap();
     }
 }

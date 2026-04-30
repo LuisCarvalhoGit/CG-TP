@@ -52,21 +52,29 @@ export class Player {
         this.mesh.add(rightEye);
     }
 
-    move(direction) {
+    move(direction, world) { 
         if (this.isMoving) return; // Impede múltiplos saltos ao mesmo tempo
         
-        this.isMoving = true;
         const step = 1;
         const startPos = { x: this.mesh.position.x, z: this.mesh.position.z };
         const endPos = { x: startPos.x, z: startPos.z };
 
-        // Definir direção e rotação
+        // 1. Definir direção e rotação primeiro (para a galinha virar-se, mesmo que não salte)
         switch(direction) {
             case 'up':    endPos.z -= step; this.mesh.rotation.y = Math.PI; break;
             case 'down':  endPos.z += step; this.mesh.rotation.y = 0; break;
             case 'left':  endPos.x -= step; this.mesh.rotation.y = -Math.PI / 2; break;
             case 'right': endPos.x += step; this.mesh.rotation.y = Math.PI / 2; break;
         }
+
+        // 2. Verificação de Colisão Estática (Árvores)
+        if (world && world.isObstacle(endPos.x, endPos.z)) {
+            this.isMoving = false; 
+            return; // Sai da função sem fazer a animação
+        }
+
+        // 3. Se passou na verificação, então sim, bloqueamos novos inputs e saltamos
+        this.isMoving = true;
 
         // Lógica de Animação do Salto (Interpolação simples)
         let progress = 0;
@@ -79,7 +87,6 @@ export class Player {
                 this.mesh.position.z = startPos.z + (endPos.z - startPos.z) * progress;
                 
                 // Movimento em Arco para o Y (Parábola)
-                // y = altura * sin(pi * progresso)
                 this.mesh.position.y = Math.sin(progress * Math.PI) * this.jumpHeight;
                 
                 requestAnimationFrame(animateJump);
@@ -88,7 +95,7 @@ export class Player {
                 this.mesh.position.x = endPos.x;
                 this.mesh.position.z = endPos.z;
                 this.mesh.position.y = 0;
-                this.isMoving = false;
+                this.isMoving = false; 
             }
         };
 

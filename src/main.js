@@ -73,10 +73,10 @@ window.addEventListener('keydown', (event) => {
     
     // Movimento do jogador
     switch(key) {
-        case 'w': case 'arrowup':    player.move('up');    break;
-        case 's': case 'arrowdown':  player.move('down');  break;
-        case 'a': case 'arrowleft':  player.move('left');  break;
-        case 'd': case 'arrowright': player.move('right'); break;
+        case 'w': case 'arrowup':    player.move('up', world);    break;
+        case 's': case 'arrowdown':  player.move('down', world);  break;
+        case 'a': case 'arrowleft':  player.move('left', world);  break;
+        case 'd': case 'arrowright': player.move('right', world); break;
     }
 });
 
@@ -107,6 +107,27 @@ function animate() {
     camera.position.x = player.mesh.position.x + currentOffset.x;
     camera.position.y = player.mesh.position.y + currentOffset.y;
     camera.position.z = player.mesh.position.z + currentOffset.z;
+
+    world.update();
+
+    // 1. Criar a Hitbox (Box3) em torno da Galinha
+    const playerBox = new THREE.Box3().setFromObject(player.mesh);
+    // Reduzimos a hitbox do jogador ligeiramente (-0.2) para que o jogo
+    // seja mais justo (evita morreres porque o bico "raspou" no carro).
+    playerBox.expandByScalar(-0.2); 
+
+    // 2. Verificar se a Hitbox da galinha interseta com a Hitbox de algum carro
+    for (const carData of world.cars) {
+        const carBox = new THREE.Box3().setFromObject(carData.mesh);
+        carBox.expandByScalar(-0.1); // Suavizar hitbox do carro também
+
+        if (playerBox.intersectsBox(carBox)) {
+            console.log("GAME OVER! Foste atropelado!");
+            // Voltar ao ponto de partida
+            player.mesh.position.set(0, 0, 5);
+            player.isMoving = false; // Interromper o salto caso esteja a meio do ar
+        }
+    }
 
     // Fazer a câmara olhar sempre para a posição central da galinha
     camera.lookAt(

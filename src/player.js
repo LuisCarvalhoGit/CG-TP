@@ -21,6 +21,8 @@ export class Player {
         this.jumps = 0;
         this.maxJumps = 10;
         this.abilityReady = false;
+
+        this.isInvincible = false;
         
         if (scene) scene.add(this.mesh);
     }
@@ -147,13 +149,12 @@ export class Player {
     }
 
     move(direction, world) { 
-        if (this.isMoving) return; // Impede múltiplos saltos ao mesmo tempo
+        if (this.isMoving) return; 
         
         const step = 1;
         const startPos = { x: this.mesh.position.x, z: this.mesh.position.z };
         const endPos = { x: startPos.x, z: startPos.z };
 
-        // 1. Definir direção e rotação primeiro (para a galinha virar-se, mesmo que não salte)
         switch(direction) {
             case 'up':    endPos.z -= step; this.mesh.rotation.y = Math.PI; break;
             case 'down':  endPos.z += step; this.mesh.rotation.y = 0; break;
@@ -161,44 +162,41 @@ export class Player {
             case 'right': endPos.x += step; this.mesh.rotation.y = Math.PI / 2; break;
         }
 
-        // 2. Verificação de Colisão Estática (Árvores)
+        // Bloqueio das Árvores
         if (world && world.isObstacle(endPos.x, endPos.z)) {
-            this.isMoving = false; 
-            return; // Sai da função sem fazer a animação
+            return; 
         }
 
-        // 3. Se passou na verificação, então sim, bloqueamos novos inputs e saltamos
         this.isMoving = true;
 
         if (direction === 'up' && !this.abilityReady) {
             this.jumps++;
-            console.log(`Saltos: ${this.jumps}/${this.maxJumps}`);
             if (this.jumps >= this.maxJumps) {
                 this.abilityReady = true;
-                console.log("HABILIDADE PRONTA!");
-                // Aqui podes disparar um evento HTML para atualizar a Interface do Utilizador
             }
         }
 
-        // Lógica de Animação do Salto (Interpolação simples)
         let progress = 0;
         const animateJump = () => {
             progress += this.jumpSpeed;
             
             if (progress <= 1) {
-                // Movimento Linear X e Z
                 this.mesh.position.x = startPos.x + (endPos.x - startPos.x) * progress;
                 this.mesh.position.z = startPos.z + (endPos.z - startPos.z) * progress;
                 
-                // Movimento em Arco para o Y (Parábola)
-                this.mesh.position.y = Math.sin(progress * Math.PI) * this.jumpHeight;
+                // Parábola para o arco do salto
+                const parabola = Math.sin(progress * Math.PI);
+                this.mesh.position.y = parabola * this.jumpHeight;
+                
+                // Polimento: Efeito Squash e Stretch orgânico
+                const scaleY = 1 + parabola * 0.4; // Estica no ar
+                const scaleXZ = 1 - parabola * 0.2; // Encolhe para os lados
+                this.mesh.scale.set(scaleXZ, scaleY, scaleXZ);
                 
                 requestAnimationFrame(animateJump);
             } else {
-                // Finalizar movimento
-                this.mesh.position.x = endPos.x;
-                this.mesh.position.z = endPos.z;
-                this.mesh.position.y = 0;
+                this.mesh.position.set(endPos.x, 0, endPos.z);
+                this.mesh.scale.set(1, 1, 1); // Reset da deformação
                 this.isMoving = false; 
             }
         };
@@ -209,10 +207,28 @@ export class Player {
     useAbility() {
         if (!this.abilityReady) return;
 
-        console.log(`Usar habilidade do ${this.type}!`);
-        // Aqui colocamos a lógica específica (ex: Mega salto, escudo, etc.)
+        // Ativa modo Invencível temporário (atravessa carros e ignora água)
+        this.isInvincible = true;
         
-        // Reset à habilidade
+        // Feedback visual: Fica semi-transparente
+        this.mesh.traverse((child) => {
+            if (child.isMesh) {
+                child.material.transparent = true;
+                child.material.opacity = 0.5;
+            }
+        });
+
+        // Termina após 3 segundos
+        setTimeout(() => {
+            this.isInvincible = false;
+            this.mesh.traverse((child) => {
+                if (child.isMesh) {
+                    child.material.transparent = false;
+                    child.material.opacity = 1;
+                }
+            });
+        }, 3000);
+        
         this.jumps = 0;
         this.abilityReady = false;
     }

@@ -11,6 +11,27 @@
             pointer-events: none; text-shadow: 1px 1px 2px black;
         }
     </style>
+    <style>
+        /* Garante que o canvas do jogo fica no fundo */
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1; 
+        }
+    
+        /* Garante que os menus ficam sempre à frente (z-index alto) */
+        #main-menu, #game-ui, #game-over-screen {
+            z-index: 100 !important;
+            pointer-events: auto !important;
+        }
+    
+        /* Estilo para o botão ter a certeza que aceita cliques */
+        #btn-change-char {
+            pointer-events: all !important;
+            z-index: 101 !important;
+        }
+    </style>
 </head>
 <body>
     <div id="info">Mover: WASD | Câmara: C</div>
@@ -32,9 +53,25 @@
             <button id="btn-start" style="font-size: 20px; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Começar Jogo</button>
         </div>
 
+        <div id="game-over-screen" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10;">
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: white; font-family: 'Arial Black', sans-serif;">
+                <h1 style="font-size: 80px; margin: 0; text-shadow: 4px 4px 0 #cc0000;">GAME OVER</h1>
+                <p style="font-size: 24px; margin-top: 20px; animation: blink 1s infinite;">Pressiona <strong style="color: #FFD700;">ESPAÇO</strong> para Recomeçar</p>
+            </div>
+            
+            <button id="btn-change-char" style="position: absolute; bottom: 30px; right: 30px; padding: 15px 25px; font-size: 18px; cursor: pointer; background: #002366; color: white; border: 3px solid #ffd700; border-radius: 10px; font-weight: bold;">
+                MUDAR PERSONAGEM
+            </button>
+        </div>
+        
+        <style>
+            @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        </style>
+
         <!-- UI DO JOGO (Escondida no início) -->
         <div id="game-ui" style="display: none; position: absolute; top: 20px; left: 20px; pointer-events: none;">
-            <h2 style="color: white; text-shadow: 2px 2px 0 #000; font-family: sans-serif;">Energia: <span id="energy-counter">0/10</span></h2>
+            <h1 style="color: white; text-shadow: 2px 2px 0 #000; font-family: sans-serif; margin: 0;">Score: <span id="score-counter">0</span></h1>
+            <h3 style="color: white; text-shadow: 2px 2px 0 #000; font-family: sans-serif; margin-top: 5px;">Energia: <span id="energy-counter">0/10</span></h3>
         </div>
 
     </div>

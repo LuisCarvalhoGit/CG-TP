@@ -3,150 +3,183 @@ import { Player } from './player.js';
 import { World } from './world.js';
 
 // ==========================================
-// 1. CONFIGURAÇÃO BASE DA CENA
+// 1. CONFIGURAÇÃO BASE
 // ==========================================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); // Azul céu
+scene.background = new THREE.Color(0x6eb8ff);
+scene.fog = new THREE.Fog(0x6eb8ff, 10, 45);
 
-scene.fog = new THREE.Fog(0x87ceeb, 15, 50);
-
-// Câmara com FOV de 40 para o "Efeito Crossy Road" (Achatamento isométrico)
-const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
-
-// Renderizador com sombras de alta qualidade
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 100);
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
 document.body.appendChild(renderer.domElement);
 
 // ==========================================
-// 2. ILUMINAÇÃO (Gold Standard)
+// 2. ILUMINAÇÃO
 // ==========================================
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(10, 20, 10);
+const directionalLight = new THREE.DirectionalLight(0xfff4e5, 1.8);
+directionalLight.position.set(15, 25, -15);
 directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.mapSize.width = 4096;
+directionalLight.shadow.mapSize.height = 4096;
 directionalLight.shadow.camera.near = 0.5;
-directionalLight.shadow.camera.far = 50;
+directionalLight.shadow.camera.far = 60;
 directionalLight.shadow.camera.left = -20;
 directionalLight.shadow.camera.right = 20;
 directionalLight.shadow.camera.top = 20;
 directionalLight.shadow.camera.bottom = -20;
+directionalLight.shadow.bias = -0.0005; 
 scene.add(directionalLight);
 
-const hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.3);
+const hemisphereLight = new THREE.HemisphereLight(0x7cb9e8, 0x5c4033, 0.6);
 scene.add(hemisphereLight);
 
 // ==========================================
-// 3. VARIÁVEIS DE ESTADO E INTERFACE
+// 3. VARIÁVEIS DE ESTADO E REFERÊNCIAS
 // ==========================================
 const world = new World(scene);
-let player = null; // O jogador só é instanciado depois de escolhido
-let gameState = 'MENU'; // 'MENU' ou 'PLAYING'
+let player = null; 
+let gameState = 'MENU'; 
+const clock = new THREE.Clock();
+let maxScore = 0;
+let deathLineZ = 5; 
 
-// Referências aos elementos do DOM (HTML)
+// REFERÊNCIAS HTML (Garante que estes IDs existem no teu index.html)
 const mainMenu = document.getElementById('main-menu');
 const gameUI = document.getElementById('game-ui');
+const gameOverScreen = document.getElementById('game-over-screen');
 const btnStart = document.getElementById('btn-start');
+const btnChangeChar = document.getElementById('btn-change-char');
 const charSelect = document.getElementById('char-select');
+const scoreCounter = document.getElementById('score-counter');
 const energyCounter = document.getElementById('energy-counter');
 
 // ==========================================
-// 4. LÓGICA DE INÍCIO DE JOGO (MENU)
+// 4. LÓGICA DE TRANSIÇÃO DE ESTADOS
 // ==========================================
+
+function iniciarJogo() {
+    // 1. Limpar personagem antigo da cena antes de criar um novo
+    if (player && player.mesh) {
+        scene.remove(player.mesh);
+    }
+
+    // 2. Criar novo personagem com base na seleção atual
+    const selectedChar = charSelect.value;
+    player = new Player(scene, selectedChar); 
+    
+    // 3. Reset total do ambiente
+    world.reset();
+    maxScore = 0;
+    deathLineZ = 5;
+    if (scoreCounter) scoreCounter.innerText = "0";
+
+    // 4. Atualizar Interface
+    gameState = 'PLAYING';
+    mainMenu.style.display = 'none'; 
+    gameOverScreen.style.display = 'none';
+    gameUI.style.display = 'block';  
+    
+    atualizarUIEnergia();
+    
+    // Tirar o foco dos botões para o "Espaço" não clicar neles sozinho
+    if (btnStart) btnStart.blur();
+    if (btnChangeChar) btnChangeChar.blur();
+}
+
+// ÚNICOS Listeners de Botões necessários
 if (btnStart) {
-    btnStart.addEventListener('click', () => {
-        const selectedChar = charSelect.value;
-        player = new Player(scene, selectedChar); // Passa o tipo escolhido para o Player
-        
-        gameState = 'PLAYING';
-        mainMenu.style.display = 'none'; // Esconde o menu inicial
-        gameUI.style.display = 'block';  // Mostra o UI do jogo (energia)
-        
-        atualizarUIEnergia();
+    btnStart.addEventListener('click', iniciarJogo);
+}
+
+if (btnChangeChar) {
+    btnChangeChar.addEventListener('click', () => {
+        gameOverScreen.style.display = 'none';
+        mainMenu.style.display = 'block';
+        gameState = 'MENU';
+        btnChangeChar.blur();
     });
 }
 
 function atualizarUIEnergia() {
-    if (!player) return;
-    if (energyCounter) {
-        if (player.abilityReady) {
-            energyCounter.innerText = "PRONTA! (Espaço)";
-            energyCounter.style.color = "#FFD700"; // Fica dourado quando pronta
-        } else {
-            energyCounter.innerText = `${player.jumps}/${player.maxJumps}`;
-            energyCounter.style.color = "white";
-        }
+    if (!player || !energyCounter) return;
+    if (player.abilityReady) {
+        energyCounter.innerText = "PRONTA! (Espaço)";
+        energyCounter.style.color = "#FFD700"; 
+    } else {
+        energyCounter.innerText = `${player.jumps}/${player.maxJumps}`;
+        energyCounter.style.color = "white";
     }
 }
 
 // ==========================================
-// 5. LÓGICA DE CÂMARA E TRANSIÇÃO
+// 5. CÂMARA E CONTROLOS
 // ==========================================
-let cameraMode = 'isometric'; // 'topDown' ou 'isometric'
-let transitionProgress = 1; // 0 = TopDown, 1 = Isometric
+let cameraMode = 'isometric'; 
+let transitionProgress = 1; 
 const transitionSpeed = 0.03;
+const config = { topDown: { x: 0, y: 12, z: 0 }, isometric: { x: 6, y: 8, z: 7 } };
 
-const config = {
-    topDown: { x: 0, y: 20, z: 0 },
-    isometric: { x: 12, y: 15, z: 12 }
-};
-
-// ==========================================
-// 6. CONTROLOS (Teclado)
-// ==========================================
 window.addEventListener('keydown', (event) => {
-    // Se não estivermos a jogar, ignorar comandos
-    if (gameState !== 'PLAYING' || !player) return;
-
     const key = event.key.toLowerCase();
 
-    // Alternar modo de câmara
+    // Lógica de Reinício (Game Over -> Jogar)
+    if (gameState === 'GAME_OVER' && (key === ' ' || event.code === 'Space')) {
+        event.preventDefault();
+        iniciarJogo();
+        return;
+    }
+
+    if (gameState !== 'PLAYING' || !player) return;
+
     if (key === 'c') {
         cameraMode = (cameraMode === 'topDown') ? 'isometric' : 'topDown';
     }
     
-    // Usar Habilidade Especial
-    if (key === ' ') { // Barra de Espaço
+    if (key === ' ' || event.code === 'Space') { 
+        event.preventDefault(); // Impede o scroll da página
         if (player.abilityReady) {
             player.useAbility();
             atualizarUIEnergia();
         }
     }
     
-    // Movimento do jogador
     switch(key) {
         case 'w': case 'arrowup':    player.move('up', world);    break;
         case 's': case 'arrowdown':  player.move('down', world);  break;
         case 'a': case 'arrowleft':  player.move('left', world);  break;
         case 'd': case 'arrowright': player.move('right', world); break;
     }
-    
-    // Atualizar UI sempre que o jogador se move (pois pode ter ganho energia)
     atualizarUIEnergia();
 });
 
 // ==========================================
-// 7. LOOP DE ANIMAÇÃO
+// 6. LOOP DE ANIMAÇÃO
 // ==========================================
 function animate() {
     requestAnimationFrame(animate);
+    const delta = clock.getDelta();
 
     if (gameState === 'PLAYING' && player) {
-        // --- Atualizar Progresso da Transição da Câmara ---
-        if (cameraMode === 'isometric' && transitionProgress < 1) {
-            transitionProgress += transitionSpeed;
-        } else if (cameraMode === 'topDown' && transitionProgress > 0) {
-            transitionProgress -= transitionSpeed;
+        // Pontuação
+        const currentZ = -Math.floor(player.mesh.position.z) + 5;
+        if (currentZ > maxScore) {
+            maxScore = currentZ;
+            if (scoreCounter) scoreCounter.innerText = maxScore;
         }
+
+        // Movimento da Câmara
+        if (cameraMode === 'isometric' && transitionProgress < 1) transitionProgress += transitionSpeed;
+        else if (cameraMode === 'topDown' && transitionProgress > 0) transitionProgress -= transitionSpeed;
         transitionProgress = Math.max(0, Math.min(1, transitionProgress));
 
-        // --- Interpolação da Câmara ---
         const currentOffset = {
             x: THREE.MathUtils.lerp(config.topDown.x, config.isometric.x, transitionProgress),
             y: THREE.MathUtils.lerp(config.topDown.y, config.isometric.y, transitionProgress),
@@ -159,63 +192,62 @@ function animate() {
         camera.lookAt(player.mesh.position.x, player.mesh.position.y, player.mesh.position.z);
 
         world.updateMap(player.mesh.position.z);
+        world.update(delta, player.mesh.position.z); 
 
-        // Atualizar o mundo (carros a mover-se)
-        world.update();
-
-        // --- Lógica de Colisão ---
+        // Verificação de Morte
+        let isGameOver = false;
         const playerBox = new THREE.Box3().setFromObject(player.mesh);
         playerBox.expandByScalar(-0.2); 
 
-        for (const carData of world.cars) {
-            const carBox = new THREE.Box3().setFromObject(carData.mesh);
-            carBox.expandByScalar(-0.1); 
+        deathLineZ -= 0.6 * delta; 
+        if (player.mesh.position.z > deathLineZ + 1.5) isGameOver = true;
 
-            if (playerBox.intersectsBox(carBox)) {
-                console.log("GAME OVER! Foste atropelado!");
-                
-                // 1. Limpar e reconstruir o mundo!
-                world.reset();
-
-                // 2. Colocar o jogador na relva inicial
-                player.mesh.position.set(0, 0, 5);
-                player.isMoving = false;
-                
-                // 3. Reset da energia
-                player.jumps = 0;
-                player.abilityReady = false;
-                atualizarUIEnergia();
-
-                // 4. (Opcional e Recomendado) Voltar ao Menu Inicial!
-                gameState = 'MENU';
-                document.getElementById('main-menu').style.display = 'block';
-                document.getElementById('game-ui').style.display = 'none';
+        if (!player.isInvincible && !isGameOver) {
+            for (const car of world.cars) {
+                if (playerBox.intersectsBox(new THREE.Box3().setFromObject(car.mesh))) { isGameOver = true; break; }
+            }
+            for (const train of world.trains) {
+                if (train.state === 'PASSING' && playerBox.intersectsBox(new THREE.Box3().setFromObject(train.mesh))) { isGameOver = true; break; }
+            }
+            const pZ = Math.round(player.mesh.position.z);
+            const lane = world.lanes.find(l => l.z === pZ);
+            if (lane && lane.type === 'river' && !player.isMoving) {
+                let onLog = false;
+                for (const log of world.logs) {
+                    if (log.laneZ === pZ && playerBox.intersectsBox(new THREE.Box3().setFromObject(log.mesh))) {
+                        onLog = true;
+                        player.mesh.position.x += log.speed * log.direction * delta * 60;
+                        if (Math.abs(player.mesh.position.x) > 15) isGameOver = true;
+                        break; 
+                    }
+                }
+                if (!onLog) isGameOver = true;
             }
         }
+
+        if (isGameOver) {
+            gameState = 'GAME_OVER';
+            gameOverScreen.style.display = 'block';
+            gameUI.style.display = 'none';
+        }
+
     } else {
-        // --- Comportamento da Câmara no MENU ---
-        // Faz a câmara rodar lentamente à volta do cenário inicial
+        // Rotação de Menu
         const time = Date.now() * 0.0005;
         camera.position.x = Math.sin(time) * 15;
         camera.position.z = Math.cos(time) * 15 + 5;
         camera.position.y = 12;
         camera.lookAt(0, 0, 5);
-        
-        // Os carros continuam a passar no fundo!
-        world.update();
+        if (world) world.update(clock.getDelta(), 0);
     }
 
     renderer.render(scene, camera);
 }
 
-// ==========================================
-// 8. RESPONSIVIDADE (Redimensionar Janela)
-// ==========================================
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Iniciar o loop
 animate();

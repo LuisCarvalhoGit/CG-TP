@@ -162,13 +162,30 @@ export class Player {
             case 'right': endPos.x += step; this.mesh.rotation.y = Math.PI / 2; break;
         }
 
-        // Bloqueio das Árvores
+        // ==========================================
+        // LIMITES DO MAPA (Barreiras Invisíveis)
+        // ==========================================
+        
+        // A. Limite Lateral: Bloqueia a passagem para as paredes laterais da floresta
+        if (endPos.x < -14 || endPos.x > 14) {
+            return; // Aborta imediatamente o movimento e ignora a tecla
+        }
+
+        // B. Limite de Recuo: Impede o jogador de fugir para a floresta atrás do spawn (z=5)
+        if (endPos.z > 5) {
+            return; // Aborta imediatamente o movimento
+        }
+
+        // ==========================================
+        // VERIFICAÇÃO DE OBSTÁCULOS (Árvores e Pedras)
+        // ==========================================
         if (world && world.isObstacle(endPos.x, endPos.z)) {
             return; 
         }
 
         this.isMoving = true;
 
+        // Gestão da energia para a Habilidade Especial
         if (direction === 'up' && !this.abilityReady) {
             this.jumps++;
             if (this.jumps >= this.maxJumps) {
@@ -196,7 +213,7 @@ export class Player {
                 requestAnimationFrame(animateJump);
             } else {
                 this.mesh.position.set(endPos.x, 0, endPos.z);
-                this.mesh.scale.set(1, 1, 1); // Reset da deformação
+                this.mesh.scale.set(1, 1, 1); // Reset da deformação ao aterrar
                 this.isMoving = false; 
             }
         };

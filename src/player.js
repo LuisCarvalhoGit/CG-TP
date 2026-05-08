@@ -5,35 +5,32 @@ export class Player {
         this.scene = scene;
         this.type = type;
         
-        // O Grupo do boneco (Pivô no chão Y=0)
         this.mesh = new THREE.Group();
         this.mesh.position.set(0, 0, 0);
         this.scene.add(this.mesh);
 
-        // Referências para animações
-        this.leftArm = null;
-        this.rightArm = null;
-        this.leftLeg = null;
-        this.rightLeg = null;
+        this.leftArm = null; this.rightArm = null;
+        this.leftLeg = null; this.rightLeg = null;
         
-        // Materiais dinâmicos
         this.powerMaterials = []; 
         this.baseScale = 1.0; 
 
-        // Constrói o modelo específico
         this.buildCharacterModel();
 
-        // Movimento e Saltos
         this.isMoving = false;
         this.jumpSpeed = 0.15;
         this.jumpHeight = 1.2;
 
-        // Sistema de Poderes
         this.isAbilityActive = false;
         this.abilityTimer = 0;
         this.jumps = 0;
         this.jumpsToCharge = 15; 
         this.abilityReady = false;
+
+        // NOVO: Lógica de Morte
+        this.isDead = false;
+        this.causeOfDeath = "";
+        this.deathProgress = 0;
     }
 
     buildCharacterModel() {
@@ -92,18 +89,72 @@ export class Player {
         this.mesh.traverse((child) => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
     }
 
-    activateAbility() { if (!this.abilityReady || this.isAbilityActive) return; this.isAbilityActive = true; this.abilityReady = false; this.jumps = 0; if (this.type === 'GHOST') { this.abilityTimer = 3.0; this.powerMaterials.forEach(mat => { mat.opacity = 0.25; mat.emissive.setHex(0x222222); }); } else if (this.type === 'JUGGERNAUT') { this.abilityTimer = 4.0; this.baseScale = 1.35; this.powerMaterials.forEach(mat => { mat.metalness = 1.0; mat.roughness = 0.1; mat.color.setHex(0xaaaaaa); }); } else if (this.type === 'TIMEKEEPER') { this.abilityTimer = 5.0; this.powerMaterials.forEach(mat => { mat.emissiveIntensity = 4.0; }); } }
-    update(delta) { if (this.isAbilityActive) { this.abilityTimer -= delta; if (this.type === 'TIMEKEEPER') { this.powerMaterials[0].emissiveIntensity = 2.0 + Math.sin(Date.now() * 0.02) * 2.0; } else if (this.type === 'GHOST') { this.mesh.position.y += Math.sin(Date.now() * 0.01) * 0.005; } if (this.abilityTimer <= 0) { this.isAbilityActive = false; if (this.type === 'GHOST') { this.powerMaterials.forEach(mat => { mat.opacity = 0.85; mat.emissive.setHex(0x000000); }); } else if (this.type === 'JUGGERNAUT') { this.baseScale = 1.0; this.powerMaterials.forEach(mat => { mat.metalness = 0.6; mat.roughness = 0.6; mat.color.setHex(0x555555); }); } else if (this.type === 'TIMEKEEPER') { this.powerMaterials[0].emissiveIntensity = 1.0; } } } }
+    activateAbility() { 
+        if (!this.abilityReady || this.isAbilityActive || this.isDead) return; 
+        this.isAbilityActive = true; this.abilityReady = false; this.jumps = 0; 
+        if (this.type === 'GHOST') { this.abilityTimer = 3.0; this.powerMaterials.forEach(mat => { mat.opacity = 0.25; mat.emissive.setHex(0x222222); }); } 
+        else if (this.type === 'JUGGERNAUT') { this.abilityTimer = 4.0; this.baseScale = 1.35; this.powerMaterials.forEach(mat => { mat.metalness = 1.0; mat.roughness = 0.1; mat.color.setHex(0xaaaaaa); }); } 
+        else if (this.type === 'TIMEKEEPER') { this.abilityTimer = 5.0; this.powerMaterials.forEach(mat => { mat.emissiveIntensity = 4.0; }); } 
+    }
+    
+    // NOVO: Método que despoleta a animação de morte
+    die(cause) {
+        if (this.isDead) return;
+        this.isDead = true;
+        this.isAbilityActive = false;
+        this.causeOfDeath = cause;
+        this.deathProgress = 0;
+        
+        // Desativa a luz de poder caso estivesse ligada
+        if (this.type === 'TIMEKEEPER') this.powerMaterials[0].emissiveIntensity = 1.0;
+    }
+
+    update(delta) { 
+        // Lógica de Morte
+        if (this.isDead) {
+            this.deathProgress += delta * 2; // Velocidade da animação (0.5 seg)
+            const p = Math.min(this.deathProgress, 1.0);
+            
+            if (this.causeOfDeath === "Atropelado!" || this.causeOfDeath === "Esborrachado pelo Expresso!" || this.causeOfDeath === "Triturado pelas engrenagens!") {
+                // PANQUECA: Achata no Y, alarga no X e Z
+                this.mesh.scale.set(this.baseScale * (1 + p*0.5), Math.max(0.05, this.baseScale * (1 - p*2)), this.baseScale * (1 + p*0.5));
+            } 
+            else if (this.causeOfDeath === "Afogaste-te!" || this.causeOfDeath === "Derreteste no Ácido!") {
+                // AFUNDAR: Afunda no chão e encolhe
+                this.mesh.position.y -= delta * 1.5;
+                this.mesh.rotation.x += delta * 2;
+                this.mesh.scale.setScalar(Math.max(0.1, this.baseScale * (1 - p)));
+            } 
+            else {
+                // VOO DRAMÁTICO: Levou uma machadada ou tiro do Drone
+                this.mesh.position.y += delta * 6;
+                this.mesh.position.z += delta * 4;
+                this.mesh.rotation.x -= delta * 15;
+                this.mesh.rotation.y += delta * 10;
+            }
+            return; // Impede que o timer de poder corra
+        }
+
+        // Lógica Normal de Poder
+        if (this.isAbilityActive) { 
+            this.abilityTimer -= delta; 
+            if (this.type === 'TIMEKEEPER') { this.powerMaterials[0].emissiveIntensity = 2.0 + Math.sin(Date.now() * 0.02) * 2.0; } 
+            else if (this.type === 'GHOST') { this.mesh.position.y += Math.sin(Date.now() * 0.01) * 0.005; } 
+            
+            if (this.abilityTimer <= 0) { 
+                this.isAbilityActive = false; 
+                if (this.type === 'GHOST') { this.powerMaterials.forEach(mat => { mat.opacity = 0.85; mat.emissive.setHex(0x000000); }); } 
+                else if (this.type === 'JUGGERNAUT') { this.baseScale = 1.0; this.powerMaterials.forEach(mat => { mat.metalness = 0.6; mat.roughness = 0.6; mat.color.setHex(0x555555); }); } 
+                else if (this.type === 'TIMEKEEPER') { this.powerMaterials[0].emissiveIntensity = 1.0; } 
+            } 
+        } 
+    }
 
     move(direction, world) { 
-        if (this.isMoving) return; 
+        if (this.isMoving || this.isDead) return; 
         
         const step = 1;
         const startPos = { x: this.mesh.position.x, z: this.mesh.position.z };
-        
-        // ==========================================
-        // CORREÇÃO: SNAP TO GRID (Alinhar à grelha)
-        // ==========================================
         let targetX = startPos.x;
         let targetZ = Math.round(startPos.z);
 
@@ -114,7 +165,6 @@ export class Player {
             case 'right': targetX += step; this.mesh.rotation.y = Math.PI / 2; break;
         }
 
-        // Força a matemática a alinhar o destino a números exatos
         targetX = Math.round(targetX);
         const endPos = { x: targetX, z: targetZ };
 
@@ -126,23 +176,19 @@ export class Player {
         if (targetElevation - startElevation > 1) return;
 
         const isGhosting = (this.type === 'GHOST' && this.isAbilityActive);
-        
-        // Agora a colisão bate certo porque endPos.x é um número inteiro (Ex: 2 em vez de 2.45)
-        if (!isGhosting && world && world.isObstacle(endPos.x, endPos.z)) {
-            return; 
-        }
+        if (!isGhosting && world && world.isObstacle(endPos.x, endPos.z)) { return; }
 
         this.isMoving = true;
 
         if (direction === 'up' && !this.abilityReady && !this.isAbilityActive) {
             this.jumps++;
-            if (this.jumps >= this.jumpsToCharge) {
-                this.abilityReady = true;
-            }
+            if (this.jumps >= this.jumpsToCharge) { this.abilityReady = true; }
         }
 
         let progress = 0;
         const animateJump = () => {
+            if (this.isDead) return; // Cancela o pulo a meio se morrer no ar
+
             const speedMod = (this.type === 'TIMEKEEPER' && this.isAbilityActive) ? 1.5 : 1.0;
             progress += this.jumpSpeed * speedMod;
             

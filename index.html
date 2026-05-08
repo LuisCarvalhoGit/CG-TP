@@ -2,16 +2,16 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>Frogger 3D - Computação Gráfica</title>
+    <title>Crossy Run 3D - Gold Standard</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         #info {
             position: absolute; top: 10px; width: 100%;
             text-align: center; color: white; font-family: sans-serif;
             pointer-events: none; text-shadow: 1px 1px 2px black;
+            z-index: 102; /* Sempre visível no topo */
         }
-    </style>
-    <style>
+        
         /* Garante que o canvas do jogo fica no fundo */
         canvas {
             position: absolute;
@@ -74,17 +74,17 @@
             border-color: #00ffff; /* Brilho azul cibernético ao selecionar */
             box-shadow: 0 0 10px #00ffff;
         }
+
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
-    <div id="info">Mover: WASD | Câmara: C</div>
+    <div id="info">Mover: WASD | Poder: ESPAÇO | Câmara: C</div>
 
-    <!-- Coloca isto dentro do <body>, antes de carregares os scripts -->
-    <div id="ui-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+    <div id="ui-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100;">
         
-        <!-- MENU INICIAL -->
-        <div id="main-menu">
-            <h1>CROSSY RUN</h1>
+        <div id="main-menu" style="pointer-events: auto; text-align: center;">
+            <h1 style="color: white; font-family: 'Arial Black', sans-serif; font-size: 60px; text-shadow: 4px 4px 0 #cc0000; margin-bottom: 0;">CROSSY RUN</h1>
             
             <div class="character-selection">
                 <label for="char-select">ESCOLHE O TEU HERÓI:</label>
@@ -95,10 +95,10 @@
                 </select>
             </div>
         
-            <button id="btn-start">INICIAR JOGO</button>
+            <button id="btn-start" style="padding: 15px 30px; font-size: 24px; font-weight: bold; background: #FFD700; border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 0 #b39700; transition: transform 0.1s;">INICIAR JOGO</button>
         </div>
 
-        <div id="game-over-screen" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10;">
+        <div id="game-over-screen" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10; pointer-events: auto;">
             <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: white; font-family: 'Arial Black', sans-serif;">
                 <h1 style="font-size: 80px; margin: 0; text-shadow: 4px 4px 0 #cc0000;">GAME OVER</h1>
                 <p style="font-size: 24px; margin-top: 20px; animation: blink 1s infinite;">Pressiona <strong style="color: #FFD700;">ESPAÇO</strong> para Recomeçar</p>
@@ -108,15 +108,27 @@
                 MUDAR PERSONAGEM
             </button>
         </div>
-        
-        <style>
-            @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        </style>
 
-        <!-- UI DO JOGO (Escondida no início) -->
-        <div id="game-ui" style="display: none; position: absolute; top: 20px; left: 20px; pointer-events: none;">
+        <div id="game-ui" style="display: none; position: absolute; top: 20px; left: 20px; pointer-events: none; width: 100%;">
             <h1 style="color: white; text-shadow: 2px 2px 0 #000; font-family: sans-serif; margin: 0;">Score: <span id="score-counter">0</span></h1>
             <h3 style="color: white; text-shadow: 2px 2px 0 #000; font-family: sans-serif; margin-top: 5px;">Energia: <span id="energy-counter">0/10</span></h3>
+            
+            <div id="perf-bar" style="position: absolute; top: 0px; right: 40px; background: rgba(20, 20, 20, 0.85); border: 2px solid #555; border-radius: 8px; padding: 10px 20px; font-family: 'Courier New', monospace; font-weight: bold; display: flex; gap: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+                <div style="text-align: center;">
+                    <span style="color: #888; font-size: 11px; display: block; margin-bottom: 3px;">FPS</span>
+                    <span id="ui-fps" style="color: #00ff00; font-size: 20px;">0</span>
+                </div>
+                <div style="width: 2px; background: #444;"></div>
+                <div style="text-align: center;">
+                    <span style="color: #888; font-size: 11px; display: block; margin-bottom: 3px;">CPU (ms)</span>
+                    <span id="ui-ms" style="color: #00ffff; font-size: 20px;">0</span>
+                </div>
+                <div style="width: 2px; background: #444;"></div>
+                <div style="text-align: center;">
+                    <span style="color: #888; font-size: 11px; display: block; margin-bottom: 3px;">RAM</span>
+                    <span id="ui-mem" style="color: #ff00ff; font-size: 20px;">0 MB</span>
+                </div>
+            </div>
         </div>
 
     </div>
@@ -125,8 +137,7 @@
         {
             "imports": {
                 "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.umd.min.js"
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
             }
         }
     </script>

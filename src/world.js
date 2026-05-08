@@ -412,4 +412,57 @@ export class World {
         this.currentBiome = 'CLASSIC'; this.lanesUntilBiomeChange = 20;
         this.createInitialMap();
     }
+
+    // Método para compilar todos os materiais na GPU antes do jogo começar
+    warmupShaders(renderer, camera) {
+        console.log("A iniciar Pré-aquecimento Total da GPU...");
+        const warmupGroup = new THREE.Group();
+        this.scene.add(warmupGroup);
+
+        // Criamos as amostras de todos os obstáculos complexos
+        const sampleTypes = ['road', 'river', 'railroad', 'conveyor', 'acid_pit', 'factory_floor', 'grass'];
+        sampleTypes.forEach((type, i) => {
+            const tempLane = new THREE.Group();
+            
+            const groundGeo = (type === 'river') ? this.geos.river : (type === 'acid_pit') ? this.geos.acid : this.geos.lane;
+            const ground = new THREE.Mesh(groundGeo, this.mats.grass);
+            tempLane.add(ground);
+
+            if (type === 'road') this.addCar(tempLane, 0);
+            if (type === 'river') this.addLog(tempLane);
+            if (type === 'railroad') this.addRailroad(tempLane);
+            if (type === 'grass') this.addTrees(tempLane, 0);
+            if (type === 'factory_floor') {
+                this.addFactoryCrates(tempLane, 0);
+                this.addChaser(tempLane, 'factory_floor', 0);
+            }
+            if (type === 'acid_pit') this.addPallets(tempLane);
+            
+            warmupGroup.add(tempLane);
+        });
+
+        // ==========================================
+        // O SEGREDO DO GOLD STANDARD
+        // ==========================================
+        
+        // 1. Desligar o Frustum Culling (Obriga a GPU a desenhar mesmo que não esteja a olhar para lá)
+        warmupGroup.traverse((child) => {
+            if (child.isMesh) {
+                child.frustumCulled = false;
+            }
+        });
+
+        // 2. Usar o compilador nativo do Three.js (Analisa a cena e compila todos os Shaders)
+        renderer.compile(this.scene, camera);
+
+        // 3. Forçar um Render de Frame para enviar os Buffers de Vértices para a VRAM
+        renderer.render(this.scene, camera);
+
+        // Limpeza profunda imediata
+        this.scene.remove(warmupGroup);
+        this.cars = []; this.logs = []; this.trains = []; this.chasers = []; this.conveyors = [];
+        
+        console.log("GPU PREPARADA: Sistema estável a 100%.");
+    }
+    
 }

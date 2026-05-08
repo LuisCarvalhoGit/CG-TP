@@ -92,9 +92,9 @@ export class Player {
     activateAbility() { 
         if (!this.abilityReady || this.isAbilityActive || this.isDead) return; 
         this.isAbilityActive = true; this.abilityReady = false; this.jumps = 0; 
-        if (this.type === 'GHOST') { this.abilityTimer = 3.0; this.powerMaterials.forEach(mat => { mat.opacity = 0.25; mat.emissive.setHex(0x222222); }); } 
-        else if (this.type === 'JUGGERNAUT') { this.abilityTimer = 4.0; this.baseScale = 1.35; this.powerMaterials.forEach(mat => { mat.metalness = 1.0; mat.roughness = 0.1; mat.color.setHex(0xaaaaaa); }); } 
-        else if (this.type === 'TIMEKEEPER') { this.abilityTimer = 5.0; this.powerMaterials.forEach(mat => { mat.emissiveIntensity = 4.0; }); } 
+        if (this.type === 'GHOST') { this.abilityTimer = 6.0; this.powerMaterials.forEach(mat => { mat.opacity = 0.25; mat.emissive.setHex(0x222222); }); } 
+        else if (this.type === 'JUGGERNAUT') { this.abilityTimer = 8.0; this.baseScale = 1.35; this.powerMaterials.forEach(mat => { mat.metalness = 1.0; mat.roughness = 0.1; mat.color.setHex(0xaaaaaa); }); } 
+        else if (this.type === 'TIMEKEEPER') { this.abilityTimer = 6.0; this.powerMaterials.forEach(mat => { mat.emissiveIntensity = 4.0; }); } 
     }
     
     // NOVO: Método que despoleta a animação de morte

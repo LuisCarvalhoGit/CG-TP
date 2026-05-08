@@ -31,6 +31,49 @@
             pointer-events: all !important;
             z-index: 101 !important;
         }
+
+        /* Estilo para a caixa de seleção */
+        .character-selection {
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .character-selection label {
+            display: block;
+            color: #FFD700; /* Amarelo Gold */
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        #char-select {
+            appearance: none;
+            background-color: #222;
+            color: #fff;
+            border: 3px solid #FFD700;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 1.1rem;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            cursor: pointer;
+            outline: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            transition: all 0.2s ease;
+        }
+
+        #char-select:hover {
+            background-color: #333;
+            transform: scale(1.05);
+        }
+
+        #char-select:focus {
+            border-color: #00ffff; /* Brilho azul cibernético ao selecionar */
+            box-shadow: 0 0 10px #00ffff;
+        }
     </style>
 </head>
 <body>
@@ -40,17 +83,19 @@
     <div id="ui-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;">
         
         <!-- MENU INICIAL -->
-        <div id="main-menu" style="pointer-events: auto; background: rgba(255,255,255,0.9); padding: 40px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
-            <h1 style="font-family: sans-serif; color: #333;">Crossy Clone</h1>
-            <p>Escolhe o teu personagem:</p>
+        <div id="main-menu">
+            <h1>CROSSY RUN</h1>
             
-            <select id="char-select" style="font-size: 18px; padding: 10px; margin-bottom: 20px;">
-                <option value="chicken">Galinha (Voo Curto)</option>
-                <option value="frog">Sapo (Anfíbio)</option>
-                <option value="cat">Gato (Sete Vidas)</option>
-            </select>
-            <br>
-            <button id="btn-start" style="font-size: 20px; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Começar Jogo</button>
+            <div class="character-selection">
+                <label for="char-select">ESCOLHE O TEU HERÓI:</label>
+                <select id="char-select">
+                    <option value="TIMEKEEPER">O Cronometrista (Controla o Tempo)</option>
+                    <option value="JUGGERNAUT">O Juggernaut (Esmaga Obstáculos)</option>
+                    <option value="GHOST">O Fantasma (Atravessa Objetos)</option>
+                </select>
+            </div>
+        
+            <button id="btn-start">INICIAR JOGO</button>
         </div>
 
         <div id="game-over-screen" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10;">

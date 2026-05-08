@@ -13,7 +13,6 @@ const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerH
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-// Limita o Pixel Ratio ao máximo de 2. Mantém o jogo nítido mas corta o peso gráfico para metade em ecrãs de alta densidade!
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 renderer.shadowMap.enabled = true;
@@ -50,23 +49,18 @@ scene.add(hemisphereLight);
 // ==========================================
 const stormGroup = new THREE.Group();
 
-// Geometria massiva para a largura e profundidade, mas MUITO BAIXA (altura = 2)
 const stormGeo = new THREE.BoxGeometry(100, 2, 20); 
-
-// Material mais agressivo e brilhante (emissiveIntensity aumentado para 3.0)
 const stormMat = new THREE.MeshStandardMaterial({ 
-    color: 0xff0000, // Vermelho base
+    color: 0xff0000, 
     transparent: true, 
-    opacity: 0.6, // Mais opaco para parecer mais sólido
-    emissive: 0xff0000, // Brilho laser
-    emissiveIntensity: 3.0, // Brilho extremamente forte
+    opacity: 0.6, 
+    emissive: 0xff0000, 
+    emissiveIntensity: 3.0, 
     depthWrite: false,
-    side: THREE.DoubleSide // Desenha os dois lados
+    side: THREE.DoubleSide 
 });
 
 const stormWall = new THREE.Mesh(stormGeo, stormMat);
-
-// Posição Y = 1.0 (Para a base do cubo de altura 2 ficar no chão y=0)
 stormWall.position.set(0, 1.0, 10); 
 stormGroup.add(stormWall);
 scene.add(stormGroup);
@@ -81,7 +75,9 @@ const clock = new THREE.Clock();
 let maxScore = 0;
 let deathLineZ = 5; 
 
-// REFERÊNCIAS HTML (Garante que estes IDs existem no teu index.html)
+const cameraTarget = new THREE.Vector3(0, 0, 0);
+
+// REFERÊNCIAS HTML
 const mainMenu = document.getElementById('main-menu');
 const gameUI = document.getElementById('game-ui');
 const gameOverScreen = document.getElementById('game-over-screen');
@@ -96,28 +92,22 @@ const energyCounter = document.getElementById('energy-counter');
 // ==========================================
 
 function iniciarJogo() {
-    // 1. Limpar personagem antigo da cena antes de criar um novo
     if (player && player.mesh) {
         scene.remove(player.mesh);
     }
 
-    // 2. Criar novo personagem com base na seleção atual
     const selectedChar = charSelect.value;
     player = new Player(scene, selectedChar); 
     
-    // 3. Reset total do ambiente
     world.reset();
     maxScore = 0;
     deathLineZ = 5;
 
-    // Volta a colocar a Zona da Morte no ponto de partida
     stormWall.position.z = deathLineZ + 11.5;
-
     stormWall.position.y = 1.0;
 
     if (scoreCounter) scoreCounter.innerText = "0";
 
-    // 4. Atualizar Interface
     gameState = 'PLAYING';
     mainMenu.style.display = 'none'; 
     gameOverScreen.style.display = 'none';
@@ -125,15 +115,11 @@ function iniciarJogo() {
     
     atualizarUIEnergia();
     
-    // Tirar o foco dos botões para o "Espaço" não clicar neles sozinho
     if (btnStart) btnStart.blur();
     if (btnChangeChar) btnChangeChar.blur();
 }
 
-// ÚNICOS Listeners de Botões necessários
-if (btnStart) {
-    btnStart.addEventListener('click', iniciarJogo);
-}
+if (btnStart) btnStart.addEventListener('click', iniciarJogo);
 
 if (btnChangeChar) {
     btnChangeChar.addEventListener('click', () => {
@@ -149,8 +135,11 @@ function atualizarUIEnergia() {
     if (player.abilityReady) {
         energyCounter.innerText = "PRONTA! (Espaço)";
         energyCounter.style.color = "#FFD700"; 
+    } else if (player.isAbilityActive) {
+        energyCounter.innerText = "ATIVO!";
+        energyCounter.style.color = "#00ffff"; 
     } else {
-        energyCounter.innerText = `${player.jumps}/${player.maxJumps}`;
+        energyCounter.innerText = `${player.jumps}/${player.jumpsToCharge}`;
         energyCounter.style.color = "white";
     }
 }
@@ -161,12 +150,11 @@ function atualizarUIEnergia() {
 let cameraMode = 'isometric'; 
 let transitionProgress = 1; 
 const transitionSpeed = 0.03;
-const config = { topDown: { x: 0, y: 12, z: 0 }, isometric: { x: 6, y: 8, z: 7 } };
+const config = { topDown: { x: 0, y: 12, z: 0 }, isometric: { x: 2.5, y: 10, z: 10 } };
 
 window.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
 
-    // Lógica de Reinício (Game Over -> Jogar)
     if (gameState === 'GAME_OVER' && (key === ' ' || event.code === 'Space')) {
         event.preventDefault();
         iniciarJogo();
@@ -180,9 +168,9 @@ window.addEventListener('keydown', (event) => {
     }
     
     if (key === ' ' || event.code === 'Space') { 
-        event.preventDefault(); // Impede o scroll da página
+        event.preventDefault(); 
         if (player.abilityReady) {
-            player.useAbility();
+            player.activateAbility(); 
             atualizarUIEnergia();
         }
     }
@@ -204,6 +192,9 @@ function animate() {
     const delta = clock.getDelta();
 
     if (gameState === 'PLAYING' && player) {
+        player.update(delta);
+        if (!player.isAbilityActive && !player.abilityReady) atualizarUIEnergia();
+
         // --- 1. Pontuação ---
         const currentZ = -Math.floor(player.mesh.position.z) + 5;
         if (currentZ > maxScore) {
@@ -211,7 +202,7 @@ function animate() {
             if (scoreCounter) scoreCounter.innerText = maxScore;
         }
 
-        // --- 2. Movimento Suave da Câmara ---
+        // --- 2. Movimento de Câmara ---
         if (cameraMode === 'isometric' && transitionProgress < 1) transitionProgress += transitionSpeed;
         else if (cameraMode === 'topDown' && transitionProgress > 0) transitionProgress -= transitionSpeed;
         transitionProgress = Math.max(0, Math.min(1, transitionProgress));
@@ -222,77 +213,150 @@ function animate() {
             z: THREE.MathUtils.lerp(config.topDown.z, config.isometric.z, transitionProgress)
         };
 
-        camera.position.x = player.mesh.position.x + currentOffset.x;
-        camera.position.y = player.mesh.position.y + currentOffset.y;
-        camera.position.z = player.mesh.position.z + currentOffset.z;
-        camera.lookAt(player.mesh.position.x, player.mesh.position.y, player.mesh.position.z);
+        const baseElevation = world.getElevationAt ? world.getElevationAt(player.mesh.position.z) : 0;
+        
+        const idealLookAt = new THREE.Vector3(
+            player.mesh.position.x, 
+            baseElevation,          
+            player.mesh.position.z  
+        );
+
+        cameraTarget.lerp(idealLookAt, 8.0 * delta);
+
+        const idealCamPos = new THREE.Vector3(
+            cameraTarget.x + currentOffset.x,
+            cameraTarget.y + currentOffset.y,
+            cameraTarget.z + currentOffset.z
+        );
+
+        camera.position.lerp(idealCamPos, 4.0 * delta);
+        camera.lookAt(cameraTarget);
 
         // --- 3. Atualizar o Mundo ---
         world.updateMap(player.mesh.position.z);
-        world.update(delta, player.mesh.position.z); 
+        
+        let worldDelta = delta;
+        if (player.type === 'TIMEKEEPER' && player.isAbilityActive) {
+            worldDelta *= 0.15; 
+        }
+        world.update(worldDelta, player.mesh.position); 
 
         // --- 4. SISTEMA DE COLISÕES E MORTE ---
         let isGameOver = false;
         let causeOfDeath = "";
-        const playerBox = new THREE.Box3().setFromObject(player.mesh);
-        playerBox.expandByScalar(-0.2); // Caixa de colisão mais justa
+
+        // Posição central exata do jogador
+        const px = player.mesh.position.x;
+        const pz = player.mesh.position.z;
 
         // A. A Zona (Tempestade Battle Royale)
-        deathLineZ -= 0.8 * delta; // A tempestade avança constantemente
+        deathLineZ -= 0.8 * delta; 
         
-        // Atualiza a posição visual e faz pulsar
         if (typeof stormWall !== 'undefined' && stormWall) {
             stormWall.position.z = deathLineZ + 11.5;
             stormWall.material.emissiveIntensity = 0.5 + Math.sin(Date.now() * 0.005) * 0.3; 
         }
 
-        // Verifica se o jogador foi engolido
-        if (player.mesh.position.z > deathLineZ + 1.5) {
-            isGameOver = true;
-            causeOfDeath = "Engolido pela Tempestade!";
+        if (pz > deathLineZ + 1.5) {
+            isGameOver = true; causeOfDeath = "Engolido pela Tempestade!";
         }
 
-        // B. Obstáculos Físicos (Se não estiver na animação de invencibilidade)
-        if (!player.isInvincible && !isGameOver) {
+        if (!isGameOver) {
             
-            // Colisão com Carros
+            // Tolerância vertical (Para saber se o obstáculo está na mesma faixa Z que tu)
+            const zTolerance = 0.45;
+
+            // B. Colisão com Carros (Matemática AABB 100x mais rápida)
             for (const car of world.cars) {
-                if (playerBox.intersectsBox(new THREE.Box3().setFromObject(car.mesh))) { 
-                    isGameOver = true; causeOfDeath = "Atropelado!"; break; 
-                }
-            }
-            
-            // Colisão com Comboios
-            if (!isGameOver) {
-                for (const train of world.trains) {
-                    if (train.state === 'PASSING' && playerBox.intersectsBox(new THREE.Box3().setFromObject(train.mesh))) { 
-                        isGameOver = true; causeOfDeath = "Esborrachado pelo Expresso!"; break; 
+                // Checa se estão na mesma linha (Z)
+                if (Math.abs(pz - car.laneZ) < zTolerance) {
+                    // Checa se o X do jogador embate no meio da largura do carro
+                    if (Math.abs(px - car.mesh.position.x) < (car.width / 2 + 0.3)) {
+                        if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
+                            car.speed = 0; 
+                            car.mesh.position.y += 15 * delta; 
+                            car.mesh.position.x += car.direction * 10 * delta;
+                            car.mesh.rotation.z += 15 * delta;
+                        } else {
+                            isGameOver = true; causeOfDeath = "Atropelado!"; break; 
+                        }
                     }
                 }
             }
             
-            // Físicas do Rio e Troncos
+            // C. Colisão com Comboios
             if (!isGameOver) {
-                const pZ = Math.round(player.mesh.position.z);
-                const lane = world.lanes.find(l => l.z === pZ);
+                for (const train of world.trains) {
+                    if (train.state === 'PASSING' && Math.abs(pz - train.laneZ) < zTolerance) {
+                        // O comboio é longo, damos uma tolerância brutal de impacto (18 metros)
+                        if (Math.abs(px - train.mesh.position.x) < 18) {
+                            isGameOver = true; causeOfDeath = "Esborrachado pelo Expresso!"; break; 
+                        }
+                    }
+                }
+            }
+
+            // D. Físicas da Máquina (Fábrica - Tapetes)
+            if (!isGameOver && !player.isMoving) {
+                const currentLaneZ = Math.round(pz);
+                const conveyor = world.conveyors.find(c => c.laneZ === currentLaneZ);
+                if (conveyor) {
+                    player.mesh.position.x += conveyor.speed * conveyor.direction * worldDelta * 60;
+                    if (Math.abs(player.mesh.position.x) > 14) {
+                        isGameOver = true; causeOfDeath = "Triturado pelas engrenagens!";
+                    }
+                }
+            }
+
+            // E. Colisão Inimigos (Chasers - Pitágoras Rápido)
+            if (!isGameOver && world.chasers) {
+                for (const chaser of world.chasers) {
+                    if (chaser.state !== 'DEAD') {
+                        const cx = chaser.mesh.position.x;
+                        const cz = chaser.laneZ + chaser.mesh.position.z;
+                        
+                        // Cálculo de distância quadrada (mais rápido que usar raízes)
+                        const dx = px - cx;
+                        const dz = pz - cz;
+                        if ((dx * dx + dz * dz) < 0.45) { // Se a distância for menor que ~0.67 metros
+                            if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
+                                chaser.state = 'DEAD'; 
+                                chaser.mesh.position.y -= 10 * delta; 
+                            } else {
+                                isGameOver = true;
+                                causeOfDeath = chaser.isFactory ? "Desintegrado pelo Drone!" : "Levaste uma machadada do Lenhador!";
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // F. Físicas do Rio, Troncos e Ácido
+            if (!isGameOver) {
+                const currentLaneZ = Math.round(pz);
+                const lane = world.lanes.find(l => l.z === currentLaneZ);
                 
-                if (lane && lane.type === 'river' && !player.isMoving) {
+                if (lane && (lane.type === 'river' || lane.type === 'acid_pit') && !player.isMoving) {
                     let onLog = false;
                     for (const log of world.logs) {
-                        if (log.laneZ === pZ && playerBox.intersectsBox(new THREE.Box3().setFromObject(log.mesh))) {
-                            onLog = true;
-                            // Move o jogador com a velocidade do tronco
-                            player.mesh.position.x += log.speed * log.direction * delta * 60;
-                            
-                            // Se o tronco o levar para fora do mapa
-                            if (Math.abs(player.mesh.position.x) > 15) {
-                                isGameOver = true; causeOfDeath = "Levado pela correnteza!";
+                        // Está na mesma faixa?
+                        if (log.laneZ === currentLaneZ) {
+                            // O X do jogador cai dentro da largura do tronco/palete?
+                            if (Math.abs(px - log.mesh.position.x) < (log.width / 2 + 0.1)) {
+                                onLog = true;
+                                player.mesh.position.x += log.speed * log.direction * worldDelta * 60;
+                                
+                                if (Math.abs(player.mesh.position.x) > 15) {
+                                    isGameOver = true; causeOfDeath = "Levado pela correnteza!";
+                                }
+                                break; 
                             }
-                            break; 
                         }
                     }
                     if (!onLog) { 
-                        isGameOver = true; causeOfDeath = "Afogaste-te!"; 
+                        isGameOver = true; 
+                        causeOfDeath = lane.type === 'acid_pit' ? "Derreteste no Ácido!" : "Afogaste-te!"; 
                     }
                 }
             }
@@ -314,10 +378,9 @@ function animate() {
         camera.position.z = Math.cos(time) * 15 + 5;
         camera.position.y = 12;
         camera.lookAt(0, 0, 5);
-        if (world) world.update(delta, 0); // Garante que pássaros e ondas se movem no fundo
+        if (world) world.update(delta, {x: 0, y: 0, z: 0}); 
     }
 
-    // Render Final
     renderer.render(scene, camera);
 }
 

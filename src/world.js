@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 
 export class World {
-    constructor(scene) {
+    constructor(scene, audioListener) {
         this.scene = scene;
+        this.audioListener = audioListener; // Recebemos os ouvidos da câmara
+        
         this.lanes = [];
         this.laneWidth = 80; 
         this.cars = []; 
@@ -14,7 +16,10 @@ export class World {
         this.chasers = []; 
         this.obstacles = new Set();
         this.furthestZ = -30;
-        this.audioCtx = null; 
+        
+        // NOVO: Dicionário para guardar todos os .mp3 carregados
+        this.audioBuffers = {};
+        this.loadAudioFiles();
         
         this.lastLaneType = 'grass'; 
         this.currentBiome = 'CLASSIC'; 
@@ -23,6 +28,23 @@ export class World {
         this.initAssets();
         this.createInitialMap();
         this.createBirds();
+    }
+
+    // Função para pré-carregar os ficheiros de som da pasta
+    loadAudioFiles() {
+        const audioLoader = new THREE.AudioLoader();
+        // A lista exata dos nomes dos teus ficheiros
+        const soundList = ['train', 'jump', 'splash', 'crash', 'powerup'];
+        
+        soundList.forEach(name => {
+            audioLoader.load(`./sounds/${name}.mp3`, (buffer) => {
+                this.audioBuffers[name] = buffer;
+                console.log(`SFX '${name}.mp3' carregado e pronto!`);
+            }, undefined, (err) => {
+                // Mostra um aviso suave no F12 se te esqueceres de baixar algum mp3
+                console.warn(`Aviso: Falta o ficheiro ./sounds/${name}.mp3`);
+            });
+        });
     }
 
     initAssets() {
@@ -40,9 +62,6 @@ export class World {
         };
         const flannelTex = createFlannelTexture();
 
-        // ==========================================
-        // OTIMIZAÇÃO MAX: TODOS os materiais criados UMA vez!
-        // ==========================================
         this.mats = {
             grass: new THREE.MeshPhysicalMaterial({ color: 0x4caf50, roughness: 0.9, flatShading: true }),
             road: new THREE.MeshPhysicalMaterial({ color: 0x2a2a2a, roughness: 0.8, metalness: 0.2, flatShading: true }),
@@ -88,7 +107,6 @@ export class World {
             glass: new THREE.MeshStandardMaterial({ color: 0x88ccff, roughness: 0.1, metalness: 0.5, transparent: true, opacity: 0.55, depthWrite: false, flatShading: true }),
             wheel: new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 }),
             
-            // NOVO: Materiais pré-carregados para Carros e Comboios
             carColors: [
                 new THREE.MeshStandardMaterial({ color: 0xe53935, roughness: 0.4, metalness: 0.3, flatShading: true }),
                 new THREE.MeshStandardMaterial({ color: 0x1e88e5, roughness: 0.4, metalness: 0.3, flatShading: true }),
@@ -111,9 +129,6 @@ export class World {
             birdMat: new THREE.MeshBasicMaterial({ color: 0x222222 })
         };
 
-        // ==========================================
-        // OTIMIZAÇÃO MAX: TODAS as geometrias criadas UMA vez!
-        // ==========================================
         this.geos = {
             lane: new THREE.BoxGeometry(this.laneWidth, 1, 1), 
             river: new THREE.BoxGeometry(this.laneWidth, 1, 1, 30, 1, 1),
@@ -125,7 +140,6 @@ export class World {
             tunnelMainArch: new THREE.CylinderGeometry(1.6, 1.6, 1.2, 24, 1, false, 0, Math.PI), tunnelTrimArch: new THREE.CylinderGeometry(1.65, 1.65, 0.2, 24, 1, false, 0, Math.PI), tunnelWall: new THREE.BoxGeometry(1.4, 3.2, 1.2), pillarBase: new THREE.BoxGeometry(0.6, 1, 0.6), tunnelInterior: new THREE.PlaneGeometry(1.2, 4.0),
             log: new THREE.CylinderGeometry(0.3, 0.3, 1, 16), wheel: new THREE.CylinderGeometry(0.18, 0.18, 0.1, 16),
             
-            // NOVO: Geometrias dos Veículos pré-calculadas
             carChassis: new THREE.BoxGeometry(1.6, 0.35, 0.8), carRoof: new THREE.BoxGeometry(0.72, 0.25, 0.76), carGlassSide: new THREE.BoxGeometry(0.62, 0.22, 0.78), carGlassF: new THREE.BoxGeometry(0.25, 0.35, 0.74), carLightGeo: new THREE.BoxGeometry(0.1, 0.15, 0.15),
             truckChassis: new THREE.BoxGeometry(7, 0.35, 0.8), truckRoof: new THREE.BoxGeometry(3.15, 0.25, 0.76), truckGlassSide: new THREE.BoxGeometry(3.05, 0.22, 0.78),
             
@@ -206,7 +220,7 @@ export class World {
         if (currentType === 'transition_gate' || prevType === 'transition_gate' || currentType === 'factory_floor' || prevType === 'factory_floor' || currentType === 'conveyor' || prevType === 'conveyor' || currentType === 'acid_pit' || prevType === 'acid_pit') {
             if (currentType === prevType) return;
             const metal = new THREE.Mesh(this.geos.metalPlate, this.mats.metalMachine); metal.position.set(0, 0.01, edgeZ); metal.receiveShadow = true; this.freezeStaticObject(metal); laneGroup.add(metal);
-            const warning = new THREE.Mesh(this.geos.warningLine, this.mats.warningYellow); warning.position.set(0, 0.02, edgeZ); warning.receiveShadow = true; this.freezeStaticObject(warning); laneGroup.add(warning); return; 
+            const warning = new THREE.Mesh(this.geos.warningLine, this.mats.warningYellow); warning.position.set(0, 0.02, edgeZ); warning.receiveShadow = true; this.freezeStaticObject(warning); laneGroup.add(metal, warning); return; 
         }
         if (currentType === 'road' && prevType === 'road') {
             for (let x = -40; x <= 40; x += 3) { const line = new THREE.Mesh(this.geos.roadLine, this.mats.roadLine); line.position.set(x, 0.01, edgeZ); line.receiveShadow = true; this.freezeStaticObject(line); laneGroup.add(line); }
@@ -251,7 +265,6 @@ export class World {
             const palletGroup = new THREE.Group(); const pallet = new THREE.Mesh(this.geos.pallet, this.mats.pallet); pallet.position.y = -0.1; pallet.receiveShadow = true; pallet.castShadow = true; 
             this.freezeStaticObject(pallet); palletGroup.add(pallet); palletGroup.position.x = currentX; laneGroup.add(palletGroup); 
             
-            // NOVO: Adicionado 'width: 2.5'
             this.logs.push({ mesh: palletGroup, direction: direction, speed: speed, laneZ: laneGroup.position.z, width: 2.5 }); 
             currentX += length + gap; 
         } 
@@ -285,7 +298,6 @@ export class World {
         
         car.add(chassis, roof, sideGlass, fW, rW, fR, fL); car.position.x = direction === 1 ? -40 : 40; if (direction === -1) car.rotation.y = Math.PI; laneGroup.add(car); 
         
-        // NOVO: Adicionado 'width: length' para o motor de colisões matemático
         this.cars.push({ mesh: car, direction: direction, speed: baseSpeed, laneZ: laneGroup.position.z, width: length }); 
     }
     
@@ -296,13 +308,11 @@ export class World {
             const logGroup = new THREE.Group(); const log = new THREE.Mesh(this.geos.log, this.mats.wood); log.scale.set(1, length, 1); log.rotation.z = Math.PI / 2; log.position.y = -0.1; log.receiveShadow = true; log.castShadow = true; 
             this.freezeStaticObject(log); logGroup.add(log); logGroup.position.x = currentX; laneGroup.add(logGroup); 
             
-            // NOVO: Adicionado 'width: length'
             this.logs.push({ mesh: logGroup, direction: direction, speed: speed, laneZ: laneGroup.position.z, width: length }); 
             currentX += length + gap; 
         } 
     }
     
-    // OTIMIZAÇÃO: Sem 'new BoxGeometry' / 'new Material'
     addRailroad(laneGroup) { 
         const direction = Math.random() > 0.5 ? 1 : -1; 
         const r1 = new THREE.Mesh(this.geos.trainRailGeo, this.mats.trainRail); r1.position.set(0, 0.025, 0.25); const r2 = new THREE.Mesh(this.geos.trainRailGeo, this.mats.trainRail); r2.position.set(0, 0.025, -0.25); laneGroup.add(r1, r2); 
@@ -336,23 +346,31 @@ export class World {
         const rL1 = new THREE.Mesh(this.geos.signalLightGeo, this.mats.signalLight); rL1.rotation.x = Math.PI/2; rL1.position.set(-8.2, 1.5, -0.4); 
         const rL2 = new THREE.Mesh(this.geos.signalLightGeo, this.mats.signalLight); rL2.rotation.x = Math.PI/2; rL2.position.set(-7.8, 1.5, -0.4); 
         signal.add(pole, lBox, rL1, rL2); laneGroup.add(signal); 
-        trainGroup.position.x = direction === 1 ? -60 : 60; if (direction === -1) trainGroup.rotation.y = Math.PI; laneGroup.add(trainGroup); 
-        this.trains.push({ mesh: trainGroup, direction: direction, speed: 1.0, laneZ: laneGroup.position.z, state: 'IDLE', timer: 3 + Math.random() * 5, warningLights: [rL1, rL2] }); 
+        trainGroup.position.x = direction === 1 ? -60 : 60; if (direction === -1) trainGroup.rotation.y = Math.PI; 
+        
+        // NOVO: Criar a Coluna 3D (PositionalAudio) atrelada ao comboio
+        const trainSound = new THREE.PositionalAudio(this.audioListener);
+        trainSound.setRefDistance(10); // Distância até o som começar a perder volume
+        trainSound.setRolloffFactor(2.0); // Efeito Doppler (afastamento)
+        trainSound.setVolume(0.8);
+        trainGroup.add(trainSound);
+        
+        laneGroup.add(trainGroup); 
+        this.trains.push({ mesh: trainGroup, direction: direction, speed: 1.0, laneZ: laneGroup.position.z, state: 'IDLE', timer: 3 + Math.random() * 5, warningLights: [rL1, rL2], sound: trainSound }); 
     }
 
     animateLiquid(geo, speed, waveHeight) {
         const positions = geo.attributes.position;
         const originalY = geo.userData.originalY;
         for (let i = 0; i < positions.count; i++) {
-            if (originalY[i] > 0) { // Apenas a superfície afunda e sobe
+            if (originalY[i] > 0) { 
                 positions.setY(i, originalY[i] + Math.sin(positions.getX(i) * 0.5 + this.time * speed) * waveHeight);
             }
         }
         positions.needsUpdate = true;
-        geo.computeVertexNormals(); // Chamado UMA vez por frame em vez de 50!
+        geo.computeVertexNormals(); 
     }
     
-    // OTIMIZAÇÃO: Sem 'new BoxGeometry'
     createBirds() { 
         for (let i = 0; i < 6; i++) { 
             const bird = new THREE.Group(); 
@@ -362,13 +380,10 @@ export class World {
             this.scene.add(bird); this.birds.push({ mesh: bird, speed: 0.05 + Math.random() * 0.08, wingOscillation: Math.random() * Math.PI }); 
         } 
     }
-    
-    playTrainSiren() { if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (this.audioCtx.state === 'suspended') this.audioCtx.resume(); const osc = this.audioCtx.createOscillator(); const gain = this.audioCtx.createGain(); osc.type = 'square'; [450, 600, 450, 600, 450].forEach((f, i) => osc.frequency.setValueAtTime(f, this.audioCtx.currentTime + i * 0.3)); osc.connect(gain); gain.connect(this.audioCtx.destination); gain.gain.setValueAtTime(0.08, this.audioCtx.currentTime); osc.start(); osc.stop(this.audioCtx.currentTime + 1.5); }
 
     update(delta, playerPos) { 
         this.time = (this.time || 0) + delta; const playerZ = playerPos.z || 0;
         
-        // NOVO: Animar rios e ácido apenas 1 vez (Mega Otimização)
         this.animateLiquid(this.geos.river, 2.5, 0.08);
         this.animateLiquid(this.geos.acid, 4.0, 0.1);
 
@@ -377,7 +392,38 @@ export class World {
         this.birds.forEach(bird => { bird.mesh.position.x -= bird.speed * delta * 60; bird.wingOscillation += delta * 15; bird.mesh.position.y += Math.sin(bird.wingOscillation) * 0.01; if (bird.mesh.position.x < -25) bird.mesh.position.set(25, 8 + Math.random() * 6, playerZ - 5 - (Math.random() * 20)); });
         this.conveyors.forEach(c => { c.rollers.forEach(r => r.rotation.y -= c.speed * c.direction * delta * 40); c.stripes.forEach(s => { s.position.x += c.speed * c.direction * delta * 60; if (c.direction === 1 && s.position.x > 14) s.position.x = -14; if (c.direction === -1 && s.position.x < -14) s.position.x = 14; }); });
         this.gears.forEach(g => { g.mesh.rotation.z += g.speed * g.direction * delta * 60; });
-        this.trains.forEach(t => { if (t.state === 'IDLE') { t.timer -= delta; if (t.timer <= 0) { t.state = 'WARNING'; t.timer = 1.8; this.playTrainSiren(); } } else if (t.state === 'WARNING') { t.timer -= delta; const blink = Math.sin(this.time * 25) > 0; t.warningLights.forEach((l, i) => l.material.emissiveIntensity = (i === 0 ? blink : !blink) ? 5 : 0); if (t.timer <= 0) { t.state = 'PASSING'; t.warningLights.forEach(l => l.material.emissiveIntensity = 0); t.mesh.position.x = t.direction === 1 ? -60 : 60; } } else if (t.state === 'PASSING') { t.mesh.position.x += t.speed * t.direction * delta * 60; if (Math.abs(t.mesh.position.x) > 60) { t.state = 'IDLE'; t.timer = 4 + Math.random() * 6; } } });
+        
+        // NOVO: Atualização dos Comboios com Áudio
+        this.trains.forEach(t => { 
+            if (t.state === 'IDLE') { 
+                t.timer -= delta; 
+                if (t.timer <= 0) { 
+                    t.state = 'WARNING'; 
+                    t.timer = 1.8; // Tempo de aviso
+                    
+                    // Toca o ficheiro MP3 caso já tenha feito o load!
+                    if (t.sound && !t.sound.isPlaying && this.audioBuffers['train']) {
+                        if (!t.sound.buffer) t.sound.setBuffer(this.audioBuffers['train']);
+                        t.sound.play(); 
+                    }
+                } 
+            } else if (t.state === 'WARNING') { 
+                t.timer -= delta; 
+                const blink = Math.sin(this.time * 25) > 0; 
+                t.warningLights.forEach((l, i) => l.material.emissiveIntensity = (i === 0 ? blink : !blink) ? 5 : 0); 
+                if (t.timer <= 0) { 
+                    t.state = 'PASSING'; 
+                    t.warningLights.forEach(l => l.material.emissiveIntensity = 0); 
+                    t.mesh.position.x = t.direction === 1 ? -60 : 60; 
+                } 
+            } else if (t.state === 'PASSING') { 
+                t.mesh.position.x += t.speed * t.direction * delta * 60; 
+                if (Math.abs(t.mesh.position.x) > 60) { 
+                    t.state = 'IDLE'; 
+                    t.timer = 4 + Math.random() * 6; 
+                } 
+            } 
+        });
         
         this.chasers.forEach(chaser => {
             const cX = chaser.mesh.position.x; const cZ = chaser.laneZ + chaser.mesh.position.z; const dx = playerPos.x - cX; const dz = playerPos.z - cZ; const dist = Math.sqrt(dx*dx + dz*dz);
@@ -413,17 +459,14 @@ export class World {
         this.createInitialMap();
     }
 
-    // Método para compilar todos os materiais na GPU antes do jogo começar
     warmupShaders(renderer, camera) {
         console.log("A iniciar Pré-aquecimento Total da GPU...");
         const warmupGroup = new THREE.Group();
         this.scene.add(warmupGroup);
 
-        // Criamos as amostras de todos os obstáculos complexos
         const sampleTypes = ['road', 'river', 'railroad', 'conveyor', 'acid_pit', 'factory_floor', 'grass'];
         sampleTypes.forEach((type, i) => {
             const tempLane = new THREE.Group();
-            
             const groundGeo = (type === 'river') ? this.geos.river : (type === 'acid_pit') ? this.geos.acid : this.geos.lane;
             const ground = new THREE.Mesh(groundGeo, this.mats.grass);
             tempLane.add(ground);
@@ -441,28 +484,17 @@ export class World {
             warmupGroup.add(tempLane);
         });
 
-        // ==========================================
-        // O SEGREDO DO GOLD STANDARD
-        // ==========================================
-        
-        // 1. Desligar o Frustum Culling (Obriga a GPU a desenhar mesmo que não esteja a olhar para lá)
         warmupGroup.traverse((child) => {
             if (child.isMesh) {
                 child.frustumCulled = false;
             }
         });
 
-        // 2. Usar o compilador nativo do Three.js (Analisa a cena e compila todos os Shaders)
         renderer.compile(this.scene, camera);
-
-        // 3. Forçar um Render de Frame para enviar os Buffers de Vértices para a VRAM
         renderer.render(this.scene, camera);
 
-        // Limpeza profunda imediata
         this.scene.remove(warmupGroup);
         this.cars = []; this.logs = []; this.trains = []; this.chasers = []; this.conveyors = [];
-        
         console.log("GPU PREPARADA: Sistema estável a 100%.");
     }
-    
 }

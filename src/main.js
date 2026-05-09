@@ -16,16 +16,28 @@ scene.background = new THREE.Color(0x6eb8ff);
 scene.fog = new THREE.Fog(0x6eb8ff, 10, 45);
 
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 100);
-// NOVO: Adicionar a câmara à cena permite colar-lhe objetos (como o Showcase)
 scene.add(camera); 
+
+// Adicionar "Ouvidos" à lente da Câmara para o som 3D
+const audioListener = new THREE.AudioListener();
+camera.add(audioListener);
+
+// Canal de Efeitos Sonoros Global do Jogador
+const globalSFX = new THREE.Audio(audioListener);
+
+function playSFX(name, volume = 0.5) {
+    if (world && world.audioBuffers && world.audioBuffers[name]) {
+        if (globalSFX.isPlaying) globalSFX.stop(); 
+        globalSFX.setBuffer(world.audioBuffers[name]);
+        globalSFX.setVolume(volume);
+        globalSFX.play();
+    }
+}
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(1); 
 
-// ==========================================
-// 1.1 CONTROLOS DE CÂMARA LIVRE (FREE ROAM)
-// ==========================================
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enabled = false; 
 controls.enableDamping = true; 
@@ -37,6 +49,97 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 document.body.appendChild(renderer.domElement);
+
+// ==========================================
+// 1.5 SISTEMA DE PARTÍCULAS (VFX)
+// ==========================================
+class ParticleSystem {
+    constructor(scene) {
+        this.scene = scene;
+        this.particles = [];
+        this.geo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+        
+        // Usamos BasicMaterial porque as partículas devem "brilhar" (não precisam de luz/sombra)
+        this.mats = {
+            dust: new THREE.MeshBasicMaterial({ color: 0xdddddd }),
+            water: new THREE.MeshBasicMaterial({ color: 0x4fc3f7 }),
+            acid: new THREE.MeshBasicMaterial({ color: 0x39ff14 }),
+            blood: new THREE.MeshBasicMaterial({ color: 0xff3333 }),
+            metal: new THREE.MeshBasicMaterial({ color: 0x555555 })
+        };
+    }
+    
+    spawn(x, y, z, type, count) {
+        for(let i = 0; i < count; i++) {
+            let mat = this.mats.dust;
+            if(type === 'water') mat = this.mats.water;
+            else if(type === 'acid') mat = this.mats.acid;
+            else if(type === 'crash') mat = Math.random() > 0.5 ? this.mats.blood : this.mats.metal;
+            
+            const mesh = new THREE.Mesh(this.geo, mat);
+            // Espalha a posição inicial ligeiramente
+            mesh.position.set(x + (Math.random()-0.5)*0.8, y + 0.2, z + (Math.random()-0.5)*0.8);
+            
+            // Física Básica: Vetores de Força
+            let vx = (Math.random() - 0.5) * 4;
+            let vy = Math.random() * 5 + 2; // Força para cima
+            let vz = (Math.random() - 0.5) * 4;
+            let startScale = 1.0;
+            
+            // Comportamentos Diferentes
+            if(type === 'dust') {
+                vx *= 0.3; vy = Math.random() * 2 + 1; vz *= 0.3; // Poeira não salta muito
+                startScale = 0.5;
+            } else if(type === 'crash') {
+                vx *= 2.5; vy *= 1.5; vz *= 2.5; // Explosão mais violenta
+                startScale = 1.5;
+            }
+            
+            mesh.scale.setScalar(startScale);
+            this.scene.add(mesh);
+            
+            // Guarda na lista para atualizar a cada frame
+            this.particles.push({ 
+                mesh, vx, vy, vz, 
+                life: 1.0, 
+                decay: Math.random() * 1.5 + 0.8, // Quão rápido desaparece
+                baseScale: startScale
+            });
+        }
+    }
+    
+    update(delta) {
+        for(let i = this.particles.length - 1; i >= 0; i--) {
+            let p = this.particles[i];
+            p.life -= delta * p.decay;
+            
+            if(p.life <= 0) {
+                this.scene.remove(p.mesh);
+                this.particles.splice(i, 1);
+            } else {
+                p.vy -= 18 * delta; // Efeito da Gravidade
+                p.mesh.position.x += p.vx * delta;
+                p.mesh.position.y += p.vy * delta;
+                p.mesh.position.z += p.vz * delta;
+                
+                // Rotação aleatória baseada na velocidade
+                p.mesh.rotation.x += p.vx * delta;
+                p.mesh.rotation.y += p.vy * delta;
+                
+                // Encolhe ao estilo voxel (em vez de ficar transparente)
+                const currentScale = Math.max(0, p.life * p.baseScale);
+                p.mesh.scale.setScalar(currentScale);
+            }
+        }
+    }
+    
+    reset() {
+        this.particles.forEach(p => this.scene.remove(p.mesh));
+        this.particles = [];
+    }
+}
+
+const particleSystem = new ParticleSystem(scene);
 
 // ==========================================
 // 2. ILUMINAÇÃO OTIMIZADA E LIL-GUI
@@ -106,7 +209,7 @@ scene.add(stormGroup);
 // ==========================================
 // 3. VARIÁVEIS DE ESTADO E REFERÊNCIAS HTML
 // ==========================================
-const world = new World(scene);
+const world = new World(scene, audioListener);
 world.warmupShaders(renderer, camera);
 
 let player = null; 
@@ -118,14 +221,13 @@ let deathLineZ = 5;
 const cameraTarget = new THREE.Vector3(0, 0, 0);
 let deathTimer = 0;
 
-// NOVO: Variáveis para o Showcase de Personagens
 const charList = [
     { id: 'TIMEKEEPER', name: 'O Cronometrista' },
     { id: 'JUGGERNAUT', name: 'O Juggernaut' },
     { id: 'GHOST', name: 'O Fantasma' }
 ];
 let currentCharIndex = 0;
-let menuCharacter = null; // O nosso boneco rotativo
+let menuCharacter = null; 
 
 // Referências HTML
 const mainMenu = document.getElementById('main-menu');
@@ -140,12 +242,10 @@ const bestScoreCounter = document.getElementById('best-score-counter');
 const btnEditLight = document.getElementById('btn-edit-light');
 const btnExitEdit = document.getElementById('btn-exit-edit');
 
-// Referências HTML do Showcase
 const btnPrevChar = document.getElementById('btn-prev-char');
 const btnNextChar = document.getElementById('btn-next-char');
 const charNameDisplay = document.getElementById('char-name-display');
 
-// Referências da Barra de Desempenho
 const uiFps = document.getElementById('ui-fps');
 const uiMs = document.getElementById('ui-ms');
 const uiMem = document.getElementById('ui-mem');
@@ -159,31 +259,21 @@ let ultimoTempoMecanica = performance.now();
 // 3.5 LÓGICA DO SHOWCASE DE SELEÇÃO
 // ==========================================
 function updateShowcase() {
-    // 1. Apaga o ator anterior da lente da câmara
     if (menuCharacter && menuCharacter.mesh) {
         camera.remove(menuCharacter.mesh);
     }
     
-    // 2. Cria um novo modelo
     menuCharacter = new Player(scene, charList[currentCharIndex].id);
-    
-    // 3. O SEGREDO: Remove do mundo normal e "Cola" à câmara
     scene.remove(menuCharacter.mesh); 
     camera.add(menuCharacter.mesh);   
 
-    // 4. Posiciona o boneco à frente da câmara (Centro X, Abaixo Y, Frente Z)
-    // X = 2.5 (Move para a direita do ecrã, fugindo do texto central)
-    // Y = -0.5 (Ajusta a altura)
-    // Z = -6 (Afasta um bocadinho para caber no enquadramento)
-    menuCharacter.mesh.position.set(2, -0.5, -6); 
-    menuCharacter.mesh.scale.set(1.5, 1.5, 1.5); // Aumentei um pouco a escala para compensar a distância
-    menuCharacter.mesh.rotation.x = 0.1; // Inclina a cabeça ligeiramente
+    menuCharacter.mesh.position.set(2.5, -0.5, -6); 
+    menuCharacter.mesh.scale.set(1.5, 1.5, 1.5); 
+    menuCharacter.mesh.rotation.x = 0.1; 
     
-    // 5. Atualiza o Texto UI
     if (charNameDisplay) charNameDisplay.innerText = charList[currentCharIndex].name;
 }
 
-// Inicializa o primeiro herói no showcase
 updateShowcase();
 
 if (btnPrevChar) {
@@ -204,6 +294,7 @@ if (btnNextChar) {
 // ==========================================
 function resetEstadoMundo() {
     world.reset();
+    particleSystem.reset(); // LIMPA AS PARTÍCULAS MORTAS!
     runScore = 0;
     deathLineZ = 5;
     
@@ -216,7 +307,6 @@ function resetEstadoMundo() {
     }
 }
 
-// --- LÓGICA DO MODO ESTÚDIO ---
 if (btnEditLight) {
     btnEditLight.addEventListener('click', () => {
         resetEstadoMundo(); 
@@ -225,7 +315,6 @@ if (btnEditLight) {
         btnExitEdit.style.display = 'block';
         gui.show(); 
         
-        // Esconde o jogador e o modelo do showcase
         if (player && player.mesh) player.mesh.visible = false;
         if (menuCharacter && menuCharacter.mesh) menuCharacter.mesh.visible = false; 
         
@@ -243,19 +332,19 @@ if (btnExitEdit) {
         gui.hide(); 
         
         if (player && player.mesh) player.mesh.visible = true;
-        if (menuCharacter && menuCharacter.mesh) menuCharacter.mesh.visible = true; // Mostra novamente
+        if (menuCharacter && menuCharacter.mesh) menuCharacter.mesh.visible = true; 
         
         controls.enabled = false; 
     });
 }
 
-// --- LÓGICA DE ARRANQUE ---
 function iniciarJogo() {
+    if (THREE.AudioContext.getContext().state === 'suspended') {
+        THREE.AudioContext.getContext().resume();
+    }
+
     if (player && player.mesh) scene.remove(player.mesh);
-    
-    // USA O HERÓI QUE ESTÁ SELECIONADO NO SHOWCASE!
     player = new Player(scene, charList[currentCharIndex].id); 
-    
     resetEstadoMundo(); 
 
     gameState = 'PLAYING';
@@ -264,7 +353,6 @@ function iniciarJogo() {
     gameUI.style.display = 'block';  
     atualizarUIEnergia();
     
-    // Esconde o showcase gigante enquanto jogas
     if (menuCharacter && menuCharacter.mesh) menuCharacter.mesh.visible = false; 
     
     if (btnStart) btnStart.blur();
@@ -277,10 +365,7 @@ if (btnChangeChar) {
         gameOverScreen.style.display = 'none';
         mainMenu.style.display = 'block';
         gameState = 'MENU';
-        
-        // Volta a mostrar o troféu
         if (menuCharacter && menuCharacter.mesh) menuCharacter.mesh.visible = true; 
-        
         btnChangeChar.blur();
     });
 }
@@ -317,8 +402,14 @@ window.addEventListener('keydown', (event) => {
     
     if (key === ' ' || event.code === 'Space') { 
         event.preventDefault(); 
-        if (player.abilityReady) { player.activateAbility(); atualizarUIEnergia(); }
+        if (player.abilityReady) { 
+            player.activateAbility(); 
+            atualizarUIEnergia(); 
+            playSFX('powerup', 0.6);
+        }
     }
+    
+    const wasMoving = player.isMoving;
     
     switch(key) {
         case 'w': case 'arrowup':    player.move('up', world);    break;
@@ -326,6 +417,13 @@ window.addEventListener('keydown', (event) => {
         case 'a': case 'arrowleft':  player.move('left', world);  break;
         case 'd': case 'arrowright': player.move('right', world); break;
     }
+    
+    if (!wasMoving && player.isMoving) {
+        playSFX('jump', 0.2);
+        // NOVO: Levanta 5 blocos de poeira sempre que salta com sucesso
+        particleSystem.spawn(player.mesh.position.x, 0.2, player.mesh.position.z, 'dust', 5);
+    }
+    
     atualizarUIEnergia();
 });
 
@@ -337,7 +435,6 @@ function animate() {
     const agora = performance.now();
     const delta = clock.getDelta();
 
-    // --- ATUALIZADOR DA BARRA DE DESEMPENHO ---
     framesContados++;
     if (agora - ultimoTempoMecanica >= 1000) {
         if (uiFps) {
@@ -350,6 +447,9 @@ function animate() {
         framesContados = 0; ultimoTempoMecanica = agora;
     }
     if (uiMs) uiMs.innerText = Math.round(delta * 1000);
+
+    // NOVO: Atualizar a Física de todas as Partículas
+    particleSystem.update(delta);
 
     // --- LÓGICA DO JOGO ---
     if (gameState === 'PLAYING' && player) {
@@ -419,6 +519,9 @@ function animate() {
                 if (Math.abs(pz - car.laneZ) < zTolerance && Math.abs(px - car.mesh.position.x) < (car.width / 2 + 0.3)) {
                     if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
                         car.speed = 0; car.mesh.position.y += 15 * delta; car.mesh.position.x += car.direction * 10 * delta; car.mesh.rotation.z += 15 * delta;
+                        // NOVO: Sai faíscas ao esmagar o carro!
+                        particleSystem.spawn(px, 1.0, pz, 'crash', 10);
+                        playSFX('crash', 0.4);
                     } else { isGameOver = true; causeOfDeath = "Atropelado!"; break; }
                 }
             }
@@ -447,6 +550,8 @@ function animate() {
                         if (((px - cx) * (px - cx) + (pz - cz) * (pz - cz)) < 0.45) { 
                             if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
                                 chaser.state = 'DEAD'; chaser.mesh.position.y -= 10 * delta; 
+                                particleSystem.spawn(px, 1.0, pz, 'crash', 10);
+                                playSFX('crash', 0.4);
                             } else {
                                 isGameOver = true; causeOfDeath = chaser.isFactory ? "Desintegrado pelo Drone!" : "Levaste uma machadada do Lenhador!"; break;
                             }
@@ -481,6 +586,18 @@ function animate() {
             gameState = 'DYING';
             deathTimer = 1.5; 
 
+            // NOVO: Explosão de Partículas com a Morte!
+            let pType = 'crash';
+            let deathSound = 'crash';
+            
+            if (causeOfDeath === "Afogaste-te!") { pType = 'water'; deathSound = 'splash'; }
+            else if (causeOfDeath === "Derreteste no Ácido!") { pType = 'acid'; deathSound = 'splash'; }
+            else if (causeOfDeath === "Engolido pela Tempestade!") { pType = 'dust'; }
+            
+            // Dispara 30 partículas coloridas consoante a morte
+            particleSystem.spawn(player.mesh.position.x, player.mesh.position.y, player.mesh.position.z, pType, 30);
+            playSFX(deathSound, 0.7);
+
             let causeElement = document.getElementById('death-reason-text');
             if (!causeElement) {
                 causeElement = document.createElement('h2');
@@ -495,7 +612,6 @@ function animate() {
         }
 
     } else if (gameState === 'DYING' && player) {
-        // --- ESTADO: A MORRER ---
         player.update(delta); 
         world.update(delta * 0.2, player.mesh.position); 
 
@@ -507,19 +623,16 @@ function animate() {
         }
 
     } else if (gameState === 'STUDIO') {
-        // --- MODO ESTÚDIO (Showcase) ---
         controls.update();
         if (world) world.update(delta, {x: 0, y: 0, z: 0});
 
     } else {
-        // --- MODO MENU (Lobby Interativo) ---
         camera.position.lerp(new THREE.Vector3(8, 12, 12), 2.0 * delta);
         camera.lookAt(0, 0, -10);
         if (world) world.update(delta, {x: 0, y: 0, z: 0});
         
-        // NOVO: Faz o herói do menu rodar como um Troféu de Exibição
         if (menuCharacter && menuCharacter.mesh.visible) {
-            menuCharacter.mesh.rotation.y += delta * 1.5; // Roda a uma velocidade agradável
+            menuCharacter.mesh.rotation.y += delta * 1.5; 
         }
     }
 

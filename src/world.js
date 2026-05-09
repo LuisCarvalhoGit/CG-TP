@@ -3,48 +3,47 @@ import * as THREE from 'three';
 export class World {
     constructor(scene, audioListener) {
         this.scene = scene;
-        this.audioListener = audioListener; // Recebemos os ouvidos da câmara
+        this.audioListener = audioListener; 
         
         this.lanes = [];
         this.laneWidth = 80; 
         this.cars = []; 
-        this.coins = [];
         this.logs = []; 
         this.birds = []; 
         this.trains = []; 
         this.conveyors = []; 
         this.gears = []; 
         this.chasers = []; 
+        this.coins = []; 
+        this.lasers = []; // NOVO: Matriz de Lasers
         this.obstacles = new Set();
         this.furthestZ = -30;
         
-        // NOVO: Dicionário para guardar todos os .mp3 carregados
         this.audioBuffers = {};
         this.loadAudioFiles();
         
         this.lastLaneType = 'grass'; 
+        
+        // NOVO: SISTEMA DE EVENTOS (ZONAS ESPECIAIS)
         this.currentBiome = 'CLASSIC'; 
-        this.lanesUntilBiomeChange = 20; 
+        this.lanesUntilEvent = 25; 
+        this.currentEvent = 'NONE';
+        this.eventLanesRemaining = 0;
 
         this.initAssets();
         this.createInitialMap();
         this.createBirds();
     }
 
-    // Função para pré-carregar os ficheiros de som da pasta
     loadAudioFiles() {
         const audioLoader = new THREE.AudioLoader();
-        // A lista exata dos nomes dos teus ficheiros
         const soundList = ['train', 'jump', 'splash', 'crash', 'powerup'];
         
         soundList.forEach(name => {
             audioLoader.load(`./sounds/${name}.mp3`, (buffer) => {
                 this.audioBuffers[name] = buffer;
-                console.log(`SFX '${name}.mp3' carregado e pronto!`);
-            }, undefined, (err) => {
-                // Mostra um aviso suave no F12 se te esqueceres de baixar algum mp3
-                console.warn(`Aviso: Falta o ficheiro ./sounds/${name}.mp3`);
-            });
+                console.log(`SFX '${name}.mp3' carregado!`);
+            }, undefined, () => {});
         });
     }
 
@@ -75,7 +74,13 @@ export class World {
             acid: new THREE.MeshStandardMaterial({ color: 0x39ff14, emissive: 0x115500, emissiveIntensity: 0.8, roughness: 0.2, flatShading: true }), 
             pallet: new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8, roughness: 0.7, flatShading: true }), 
             gear: new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.5, flatShading: true }), 
+            coinMat: new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 1.0, roughness: 0.2, emissive: 0xffaa00, emissiveIntensity: 0.8 }),
             
+            // NOVO: MATERIAIS DE EVENTO
+            laserOn: new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 4.0, transparent: true, opacity: 0.9 }),
+            laserOff: new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0x220000, emissiveIntensity: 0.5, transparent: true, opacity: 0.4 }),
+            abyssBlack: new THREE.MeshBasicMaterial({ color: 0x000000 }),
+
             droneEye: new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 }), 
             skinMat: new THREE.MeshStandardMaterial({ color: 0xffccaa, roughness: 0.8, flatShading: true }), 
             shirtMat: new THREE.MeshStandardMaterial({ map: flannelTex, roughness: 1.0, flatShading: true }), 
@@ -116,7 +121,7 @@ export class World {
                 new THREE.MeshStandardMaterial({ color: 0x8e24aa, roughness: 0.4, metalness: 0.3, flatShading: true })
             ],
             carBlack: new THREE.MeshStandardMaterial({ color: 0x212121, roughness: 0.4, metalness: 0.3, flatShading: true }),
-            carLight: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 2 }),
+            carLight: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 5 }), // Aumentado para o Apagão
             
             trainRail: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.8, roughness: 0.2 }),
             trainTie: new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 1.0 }),
@@ -126,10 +131,7 @@ export class World {
             trainWin: new THREE.MeshStandardMaterial({ color: 0xccf0ff, transparent: true, opacity: 0.6, depthWrite: false }),
             signalBox: new THREE.MeshStandardMaterial({ color: 0x111111 }),
             signalLight: new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0 }),
-            
-            birdMat: new THREE.MeshBasicMaterial({ color: 0x222222 }),
-
-            coinMat: new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 1.0, roughness: 0.2, emissive: 0xffaa00, emissiveIntensity: 0.8 }),
+            birdMat: new THREE.MeshBasicMaterial({ color: 0x222222 })
         };
 
         this.geos = {
@@ -142,16 +144,14 @@ export class World {
             trunk: new THREE.CylinderGeometry(0.2, 0.3, 0.6, 12), pineLeaf: new THREE.ConeGeometry(0.8, 1.2, 12), sphereLeaf: new THREE.SphereGeometry(0.7, 16, 16), forestLeaf: new THREE.ConeGeometry(1.2, 1.8, 8), 
             tunnelMainArch: new THREE.CylinderGeometry(1.6, 1.6, 1.2, 24, 1, false, 0, Math.PI), tunnelTrimArch: new THREE.CylinderGeometry(1.65, 1.65, 0.2, 24, 1, false, 0, Math.PI), tunnelWall: new THREE.BoxGeometry(1.4, 3.2, 1.2), pillarBase: new THREE.BoxGeometry(0.6, 1, 0.6), tunnelInterior: new THREE.PlaneGeometry(1.2, 4.0),
             log: new THREE.CylinderGeometry(0.3, 0.3, 1, 16), wheel: new THREE.CylinderGeometry(0.18, 0.18, 0.1, 16),
-            
             carChassis: new THREE.BoxGeometry(1.6, 0.35, 0.8), carRoof: new THREE.BoxGeometry(0.72, 0.25, 0.76), carGlassSide: new THREE.BoxGeometry(0.62, 0.22, 0.78), carGlassF: new THREE.BoxGeometry(0.25, 0.35, 0.74), carLightGeo: new THREE.BoxGeometry(0.1, 0.15, 0.15),
             truckChassis: new THREE.BoxGeometry(7, 0.35, 0.8), truckRoof: new THREE.BoxGeometry(3.15, 0.25, 0.76), truckGlassSide: new THREE.BoxGeometry(3.05, 0.22, 0.78),
-            
-            trainRailGeo: new THREE.BoxGeometry(this.laneWidth, 0.05, 0.1), trainTieGeo: new THREE.BoxGeometry(0.2, 0.04, 0.8),
-            trainBoiler: new THREE.CylinderGeometry(0.45, 0.45, 3.5, 24), trainBand: new THREE.CylinderGeometry(0.47, 0.47, 0.1, 24), trainStack: new THREE.CylinderGeometry(0.18, 0.12, 0.8, 16), trainStackCrown: new THREE.CylinderGeometry(0.25, 0.18, 0.15, 16), trainLantern: new THREE.BoxGeometry(0.3, 0.3, 0.3), trainLanternGlass: new THREE.BoxGeometry(0.1, 0.2, 0.2), trainCab: new THREE.BoxGeometry(1.2, 1.3, 0.9), trainCabTrim: new THREE.BoxGeometry(1.25, 0.1, 0.95), trainCatcher: new THREE.ConeGeometry(0.6, 0.8, 4), trainTenderBody: new THREE.BoxGeometry(1.8, 0.8, 0.85), trainTenderBar: new THREE.BoxGeometry(1.85, 0.1, 0.9), trainCarriageBody: new THREE.BoxGeometry(4.0, 1.1, 0.9), trainCarTrimTop: new THREE.BoxGeometry(4.05, 0.05, 0.95), trainCarTrimBot: new THREE.BoxGeometry(4.05, 0.05, 0.95), trainWinGeo: new THREE.BoxGeometry(0.35, 0.5, 0.95),
-            signalPole: new THREE.CylinderGeometry(0.05, 0.05, 1.5), signalBoxGeo: new THREE.BoxGeometry(0.7, 0.4, 0.25), signalLightGeo: new THREE.CylinderGeometry(0.12, 0.12, 0.25, 16),
+            trainRailGeo: new THREE.BoxGeometry(this.laneWidth, 0.05, 0.1), trainTieGeo: new THREE.BoxGeometry(0.2, 0.04, 0.8), trainBoiler: new THREE.CylinderGeometry(0.45, 0.45, 3.5, 24), trainBand: new THREE.CylinderGeometry(0.47, 0.47, 0.1, 24), trainStack: new THREE.CylinderGeometry(0.18, 0.12, 0.8, 16), trainStackCrown: new THREE.CylinderGeometry(0.25, 0.18, 0.15, 16), trainLantern: new THREE.BoxGeometry(0.3, 0.3, 0.3), trainLanternGlass: new THREE.BoxGeometry(0.1, 0.2, 0.2), trainCab: new THREE.BoxGeometry(1.2, 1.3, 0.9), trainCabTrim: new THREE.BoxGeometry(1.25, 0.1, 0.95), trainCatcher: new THREE.ConeGeometry(0.6, 0.8, 4), trainTenderBody: new THREE.BoxGeometry(1.8, 0.8, 0.85), trainTenderBar: new THREE.BoxGeometry(1.85, 0.1, 0.9), trainCarriageBody: new THREE.BoxGeometry(4.0, 1.1, 0.9), trainCarTrimTop: new THREE.BoxGeometry(4.05, 0.05, 0.95), trainCarTrimBot: new THREE.BoxGeometry(4.05, 0.05, 0.95), trainWinGeo: new THREE.BoxGeometry(0.35, 0.5, 0.95), signalPole: new THREE.CylinderGeometry(0.05, 0.05, 1.5), signalBoxGeo: new THREE.BoxGeometry(0.7, 0.4, 0.25), signalLightGeo: new THREE.CylinderGeometry(0.12, 0.12, 0.25, 16),
             birdWing: new THREE.BoxGeometry(0.4, 0.05, 0.15),
-
-            coinGeo: new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8), // Um octógono a imitar uma moeda low-poly
+            coinGeo: new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8),
+            
+            // GEOMETRIAS DE EVENTOS
+            laserBeam: new THREE.CylinderGeometry(0.25, 0.25, this.laneWidth, 8)
         };
 
         const rPositions = this.geos.river.attributes.position; const rY = []; for (let i = 0; i < rPositions.count; i++) rY.push(rPositions.getY(i)); this.geos.river.userData.originalY = rY;
@@ -162,67 +162,163 @@ export class World {
     freezeStaticObject(obj) { obj.updateMatrixWorld(true); obj.matrixAutoUpdate = false; }
 
     createInitialMap() {
-        for (let z = 20; z >= 6; z--) this.createLane(z, 'forest', true); 
-        for (let z = 5; z >= 0; z--) this.createLane(z, 'grass', true);
+        for (let z = 20; z >= 6; z--) this.createLane(z, 'forest', true, 0, null, 'NONE'); 
+        for (let z = 5; z >= 0; z--) this.createLane(z, 'grass', true, 0, null, 'NONE');
         this.lastLaneType = 'grass';
         for (let z = -1; z >= -30; z--) this.generateProceduralLane(z);
     }
 
+    // A MÁQUINA DE EVENTOS!
     generateProceduralLane(z) {
-        this.lanesUntilBiomeChange--;
-        if (this.lanesUntilBiomeChange <= 0) {
-            this.currentBiome = this.currentBiome === 'CLASSIC' ? 'FACTORY' : 'CLASSIC';
-            this.lanesUntilBiomeChange = 15 + Math.floor(Math.random() * 10); 
-            this.createLane(z, 'transition_gate', true, Math.abs(z), this.lastLaneType);
+        // 1. O Evento está a decorrer?
+        if (this.eventLanesRemaining > 0) {
+            this.eventLanesRemaining--;
+            let type;
+            
+            if (this.currentEvent === 'LASER') {
+                type = Math.random() > 0.4 ? 'laser' : 'factory_floor';
+            } else if (this.currentEvent === 'ABYSS') {
+                type = Math.random() > 0.4 ? 'abyss_gap' : 'abyss_safe';
+            } else if (this.currentEvent === 'BLACKOUT') {
+                type = Math.random() > 0.5 ? 'road' : 'grass';
+            }
+
+            this.createLane(z, type, false, Math.abs(z), this.lastLaneType, this.currentEvent);
+            this.lastLaneType = type;
+
+            // Fim do evento
+            if (this.eventLanesRemaining === 0) {
+                this.lanesUntilEvent = 20 + Math.floor(Math.random() * 15);
+                this.currentEvent = 'NONE';
+                this.createLane(z-1, 'transition_gate', true, Math.abs(z-1), type, 'NONE');
+                this.lastLaneType = 'transition_gate';
+            }
+            return;
+        }
+
+        // 2. Contagem para o próximo Evento
+        this.lanesUntilEvent--;
+        if (this.lanesUntilEvent <= 0) {
+            const events = ['LASER', 'ABYSS', 'BLACKOUT'];
+            this.currentEvent = events[Math.floor(Math.random() * events.length)];
+            this.eventLanesRemaining = 12; // A Zona de Evento dura 12 linhas!
+            
+            this.createLane(z, 'transition_gate', true, Math.abs(z), this.lastLaneType, 'NONE');
             this.lastLaneType = 'transition_gate';
             return;
         }
 
+        // 3. Geração Normal (Bioma Clássico/Fábrica base)
         const depth = Math.abs(z); const rand = Math.random(); let type = 'grass';
+        
         if (this.currentBiome === 'CLASSIC') {
             if (rand < 0.35) type = 'road'; else if (rand < 0.55) type = 'river'; else if (rand < 0.65) type = 'railroad'; else type = 'grass';
         } else if (this.currentBiome === 'FACTORY') {
             if (rand < 0.30) type = 'conveyor'; else if (rand < 0.55) type = 'acid_pit'; else if (rand < 0.75) type = 'railroad'; else type = 'factory_floor'; 
         }
 
-        this.createLane(z, type, false, depth, this.lastLaneType);
+        this.createLane(z, type, false, depth, this.lastLaneType, 'NONE');
         this.lastLaneType = type;
+        
+        // Troca o bioma base ocasionalmente só para dar variedade
+        if (Math.random() < 0.05 && type === 'grass') this.currentBiome = 'CLASSIC';
+        if (Math.random() < 0.05 && type === 'factory_floor') this.currentBiome = 'FACTORY';
     }
 
-    createLane(z, type, isSafeZone, depth = 0, prevType = null) {
+    createLane(z, type, isSafeZone, depth = 0, prevType = null, eventName = 'NONE') {
         const laneGroup = new THREE.Group(); laneGroup.position.z = z;
-        const groundGeo = (type === 'river') ? this.geos.river : (type === 'acid_pit') ? this.geos.acid : this.geos.lane;
-        let groundMat = this.mats.grass;
-        if (type === 'road') groundMat = this.mats.road; else if (type === 'river') groundMat = this.mats.river; else if (type === 'acid_pit') groundMat = this.mats.acid; else if (type === 'railroad') groundMat = this.mats.railroad; else if (type === 'conveyor') groundMat = this.mats.conveyorBelt; else if (type === 'factory_floor') groundMat = this.mats.factoryFloor; else if (type === 'transition_gate') groundMat = this.mats.factoryFloor; 
         
-        const ground = new THREE.Mesh(groundGeo, groundMat); ground.position.y = (type === 'river' || type === 'acid_pit') ? -0.65 : -0.5;  
-        if (type !== 'river' && type !== 'acid_pit') { ground.receiveShadow = true; this.freezeStaticObject(ground); }
-        laneGroup.add(ground);
+        let groundGeo = this.geos.lane;
+        let groundY = -0.5;
+        let groundMat = this.mats.grass;
+
+        // Se for Abyss Gap, NÃO HÁ CHÃO (Apenas um abismo escuro lá no fundo)
+        if (type === 'abyss_gap' || type === 'abyss_safe') {
+            const pit = new THREE.Mesh(this.geos.lane, this.mats.abyssBlack);
+            pit.position.y = -15; // Poço sem fundo
+            laneGroup.add(pit);
+            if (type === 'abyss_safe') {
+                const bridge = new THREE.Mesh(this.geos.lane, this.mats.tunnelGranite);
+                bridge.position.y = -0.5;
+                bridge.receiveShadow = true;
+                laneGroup.add(bridge);
+            }
+        } else {
+            if (type === 'river' || type === 'acid_pit') { groundGeo = (type === 'acid_pit') ? this.geos.acid : this.geos.river; groundY = -0.65; }
+            if (type === 'road') groundMat = this.mats.road; 
+            else if (type === 'river') groundMat = this.mats.river; 
+            else if (type === 'acid_pit') groundMat = this.mats.acid; 
+            else if (type === 'railroad') groundMat = this.mats.railroad; 
+            else if (type === 'conveyor') groundMat = this.mats.conveyorBelt; 
+            else if (type === 'factory_floor' || type === 'transition_gate' || type === 'laser') groundMat = this.mats.factoryFloor; 
+            
+            const ground = new THREE.Mesh(groundGeo, groundMat); ground.position.y = groundY;  
+            if (type !== 'river' && type !== 'acid_pit') { ground.receiveShadow = true; this.freezeStaticObject(ground); }
+            laneGroup.add(ground);
+        }
 
         if (prevType) this.createTransition(laneGroup, type, prevType);
 
         if (type === 'transition_gate') { this.addTransitionGate(laneGroup); this.addFactoryBorders(laneGroup, -40, -15); this.addFactoryBorders(laneGroup, 15, 40); }
-        else if (this.currentBiome === 'CLASSIC' || type === 'forest') {
-            if (type === 'forest') this.addDenseForest(laneGroup, -40, 40);
-            else if (type === 'railroad') { this.addUltraRealisticTunnel(laneGroup, -15.5, 1); this.addUltraRealisticTunnel(laneGroup, 15.5, -1); this.addDenseForest(laneGroup, -40, -18); this.addDenseForest(laneGroup, 18, 40); } 
-            else if (type !== 'river' && type !== 'road') { this.addDenseForest(laneGroup, -40, -15); this.addDenseForest(laneGroup, 15, 40); }
-        } else if (this.currentBiome === 'FACTORY') {
-            if (type === 'railroad') { this.addUltraRealisticTunnel(laneGroup, -15.5, 1); this.addUltraRealisticTunnel(laneGroup, 15.5, -1); this.addFactoryBorders(laneGroup, -40, -18); this.addFactoryBorders(laneGroup, 18, 40); } 
-            else if (type !== 'acid_pit') { this.addFactoryBorders(laneGroup, -40, -15); this.addFactoryBorders(laneGroup, 15, 40); }
-        }
+        else if (type === 'forest') this.addDenseForest(laneGroup, -40, 40);
 
         if (!isSafeZone && type !== 'transition_gate') {
             if (type === 'grass') { this.addTrees(laneGroup, z); if (Math.random() < 0.12) this.addChaser(laneGroup, type, depth); if (Math.random() < 0.2) this.addCoin(laneGroup, z); }
             else if (type === 'factory_floor') { this.addFactoryCrates(laneGroup, z); if (Math.random() < 0.12) this.addChaser(laneGroup, type, depth); if (Math.random() < 0.2) this.addCoin(laneGroup, z); }
-            else if (type === 'river') this.addLog(laneGroup); else if (type === 'road') this.addCar(laneGroup, depth); else if (type === 'conveyor') this.addConveyorBelt(laneGroup); else if (type === 'acid_pit') this.addPallets(laneGroup); else if (type === 'railroad') this.addRailroad(laneGroup);
+            else if (type === 'river') this.addLog(laneGroup); 
+            else if (type === 'road') this.addCar(laneGroup, depth, eventName === 'BLACKOUT'); // Passa o evento aos carros
+            else if (type === 'conveyor') this.addConveyorBelt(laneGroup); 
+            else if (type === 'acid_pit') this.addPallets(laneGroup); 
+            else if (type === 'railroad') this.addRailroad(laneGroup);
+            // EVENTOS
+            else if (type === 'abyss_gap') this.addAbyssPlatform(laneGroup);
+            else if (type === 'laser') this.addLaser(laneGroup);
         }
 
-        this.scene.add(laneGroup); this.lanes.push({ z: z, type: type, group: laneGroup });
+        this.scene.add(laneGroup); 
+        // GUARDA O EVENTO NA LIGADA À FAIXA PARA O MAIN.JS LER
+        this.lanes.push({ z: z, type: type, group: laneGroup, event: eventName });
     }
+
+    // --- ZONA DE EVENTOS: FUNÇÕES ---
+    addLaser(laneGroup) {
+        const laserMesh = new THREE.Mesh(this.geos.laserBeam, this.mats.laserOff);
+        laserMesh.rotation.z = Math.PI / 2;
+        laserMesh.position.y = 0.5;
+        laneGroup.add(laserMesh);
+        
+        const baseL = new THREE.Mesh(this.geos.crate, this.mats.metalMachine); baseL.position.set(-15, 0.5, 0); laneGroup.add(baseL);
+        const baseR = new THREE.Mesh(this.geos.crate, this.mats.metalMachine); baseR.position.set(15, 0.5, 0); laneGroup.add(baseR);
+
+        this.lasers.push({
+            mesh: laserMesh,
+            laneZ: laneGroup.position.z,
+            isOn: false,
+            timer: Math.random() * 2.0 // Ritmo desalinhado para ser um puzzle
+        });
+    }
+
+    addAbyssPlatform(laneGroup) {
+        const direction = Math.random() > 0.5 ? 1 : -1; 
+        const speed = 0.04 + Math.random() * 0.04; 
+        let currentX = -42; 
+        while (currentX < 42) { 
+            const length = 2.5 + Math.random() * 1.5; const gap = 3.5 + Math.random() * 3; 
+            const platGroup = new THREE.Group(); 
+            const plat = new THREE.Mesh(new THREE.BoxGeometry(length, 0.2, 0.8), this.mats.metalPlate); 
+            plat.position.y = -0.1; plat.receiveShadow = true; plat.castShadow = true; 
+            this.freezeStaticObject(plat); platGroup.add(plat); platGroup.position.x = currentX; laneGroup.add(platGroup); 
+            
+            // Usamos a mesma lista dos troncos porque a mecânica de sobrevivência é igual!
+            this.logs.push({ mesh: platGroup, direction: direction, speed: speed, laneZ: laneGroup.position.z, width: length }); 
+            currentX += length + gap; 
+        }
+    }
+    // --------------------------------
 
     createTransition(laneGroup, currentType, prevType) {
         const edgeZ = 0.5;
-        if (currentType === 'transition_gate' || prevType === 'transition_gate' || currentType === 'factory_floor' || prevType === 'factory_floor' || currentType === 'conveyor' || prevType === 'conveyor' || currentType === 'acid_pit' || prevType === 'acid_pit') {
+        if (currentType === 'transition_gate' || prevType === 'transition_gate' || currentType === 'factory_floor' || prevType === 'factory_floor' || currentType === 'conveyor' || prevType === 'conveyor' || currentType === 'acid_pit' || prevType === 'acid_pit' || currentType === 'laser' || prevType === 'laser') {
             if (currentType === prevType) return;
             const metal = new THREE.Mesh(this.geos.metalPlate, this.mats.metalMachine); metal.position.set(0, 0.01, edgeZ); metal.receiveShadow = true; this.freezeStaticObject(metal); laneGroup.add(metal);
             const warning = new THREE.Mesh(this.geos.warningLine, this.mats.warningYellow); warning.position.set(0, 0.02, edgeZ); warning.receiveShadow = true; this.freezeStaticObject(warning); laneGroup.add(metal, warning); return; 
@@ -235,6 +331,27 @@ export class World {
             const metal = new THREE.Mesh(this.geos.metalPlate, this.mats.metalPlate); metal.position.set(0, 0.01, edgeZ); metal.receiveShadow = true; this.freezeStaticObject(metal); laneGroup.add(metal);
             const warning = new THREE.Mesh(this.geos.warningLine, this.mats.warningYellow); warning.position.set(0, 0.02, edgeZ); warning.receiveShadow = true; this.freezeStaticObject(warning); laneGroup.add(metal, warning);
         }
+    }
+
+    addTransitionGate(laneGroup) { 
+        const gateGroup = new THREE.Group(); 
+        const mL = new THREE.Mesh(this.geos.gateModule, this.mats.gateModuleMat); mL.position.set(-14.5, 0.25, 0); mL.castShadow = true; mL.receiveShadow = true; 
+        const mR = new THREE.Mesh(this.geos.gateModule, this.mats.gateModuleMat); mR.position.set(14.5, 0.25, 0); mR.castShadow = true; mR.receiveShadow = true; 
+        
+        const neonMat = this.currentBiome === 'CLASSIC' ? this.mats.gateNeonClassic : this.mats.gateNeonFactory;
+        const floorNeon = new THREE.Mesh(this.geos.gateFloorNeon, neonMat); floorNeon.rotation.x = -Math.PI / 2; floorNeon.position.set(0, 0.01, 0); 
+        const rectLight = new THREE.RectAreaLight(neonMat.color, 5, this.laneWidth, 1); rectLight.position.set(0, 0.1, 0); rectLight.lookAt(0, -1, 0); 
+        gateGroup.add(mL, mR, floorNeon, rectLight); this.freezeStaticObject(gateGroup); laneGroup.add(gateGroup); 
+    }
+
+    addCoin(laneGroup, laneZ) {
+        const x = Math.floor(Math.random() * 26) - 13; 
+        if (this.isObstacle(x, laneZ)) return; 
+
+        const coin = new THREE.Mesh(this.geos.coinGeo, this.mats.coinMat);
+        coin.rotation.x = Math.PI / 2; coin.position.set(x, 0.5, 0); 
+        laneGroup.add(coin);
+        this.coins.push({ mesh: coin, laneZ: laneZ, collected: false, startY: 0.5 });
     }
 
     addChaser(laneGroup, type, depth) {
@@ -258,40 +375,15 @@ export class World {
         this.chasers.push({ mesh: chaserGroup, laneZ: laneGroup.position.z, state: 'PATROL', patrolDir: Math.random() > 0.5 ? 1 : -1, speed: 0.015 + (depth * 0.0002), chaseTimer: 0, isFactory: isFactory, leftLeg: leftLeg, rightLeg: rightLeg, leftArm: leftArm, rightArm: rightArm, axe: axeGroup });
     }
 
-    addTransitionGate(laneGroup) { const gateGroup = new THREE.Group(); const mL = new THREE.Mesh(this.geos.gateModule, this.mats.gateModuleMat); mL.position.set(-14.5, 0.25, 0); mL.castShadow = true; mL.receiveShadow = true; const mR = new THREE.Mesh(this.geos.gateModule, this.mats.gateModuleMat); mR.position.set(14.5, 0.25, 0); mR.castShadow = true; mR.receiveShadow = true; const neonMat = this.currentBiome === 'CLASSIC' ? this.mats.gateNeonClassic : this.mats.gateNeonFactory; const floorNeon = new THREE.Mesh(this.geos.gateFloorNeon, neonMat); floorNeon.rotation.x = -Math.PI / 2; floorNeon.position.set(0, 0.01, 0); const rectLight = new THREE.RectAreaLight(neonMat.color, 5, this.laneWidth, 1); rectLight.position.set(0, 0.1, 0); rectLight.lookAt(0, -1, 0); gateGroup.add(mL, mR, floorNeon, rectLight); this.freezeStaticObject(gateGroup); laneGroup.add(gateGroup); }
     addFactoryBorders(laneGroup, startX, endX) { for (let x = startX + 1; x <= endX - 1; x += 3) { const wallGroup = new THREE.Group(); const wall = new THREE.Mesh(this.geos.machineWall, this.mats.metalMachine); wall.position.set(0, 1.5, 0); wall.castShadow = true; wall.receiveShadow = true; wallGroup.add(wall); if (Math.random() > 0.3) { const gear = new THREE.Mesh(this.geos.gear, this.mats.gear); gear.rotation.x = Math.PI / 2; gear.position.set(0, 1.5 + (Math.random()*1), x > 0 ? -0.8 : 0.8); wallGroup.add(gear); this.gears.push({ mesh: gear, speed: 0.02 + Math.random() * 0.05, direction: Math.random() > 0.5 ? 1 : -1 }); } else { this.freezeStaticObject(wall); } wallGroup.position.x = x; laneGroup.add(wallGroup); } }
     addFactoryCrates(laneGroup, laneZ) { const numCrates = Math.floor(Math.random() * 6) + 2; const occupiedPositions = new Set(); for (let i = 0; i < numCrates; i++) { let x = Math.floor(Math.random() * 30) - 15; if (occupiedPositions.has(x) || (x === 0 && laneGroup.position.z > -5)) continue; occupiedPositions.add(x); const stackHeight = Math.random() > 0.7 ? 2 : 1; for(let y = 0; y < stackHeight; y++) { const crate = new THREE.Mesh(this.geos.crate, this.mats.crate); crate.position.set(x, 0.4 + (y * 0.82), 0); crate.rotation.y = (Math.random() - 0.5) * 0.2; crate.castShadow = true; crate.receiveShadow = true; this.freezeStaticObject(crate); laneGroup.add(crate); } this.obstacles.add(`${x},${laneZ}`); } }
-    
     addConveyorBelt(laneGroup) { const direction = Math.random() > 0.5 ? 1 : -1; const speed = 0.04 + Math.random() * 0.03; const rL = new THREE.Mesh(this.geos.roller, this.mats.metalMachine); rL.rotation.x = Math.PI/2; rL.position.set(-14.5, -0.1, 0); const rR = new THREE.Mesh(this.geos.roller, this.mats.metalMachine); rR.rotation.x = Math.PI/2; rR.position.set(14.5, -0.1, 0); laneGroup.add(rL, rR); const stripes = []; for(let x = -14; x <= 14; x += 2) { const stripe = new THREE.Mesh(this.geos.stripe, this.mats.conveyorStripe); stripe.position.set(x, 0.01, 0); stripe.receiveShadow = true; laneGroup.add(stripe); stripes.push(stripe); } this.conveyors.push({ laneZ: laneGroup.position.z, direction, speed, stripes, rollers: [rL, rR] }); }
-    addPallets(laneGroup) { 
-        const direction = Math.random() > 0.5 ? 1 : -1; const speed = 0.04 + Math.random() * 0.06; let currentX = -42; 
-        while (currentX < 42) { 
-            const length = 2.5; const gap = Math.random() > 0.8 ? 5 + Math.random() * 3 : 1.5 + Math.random() * 2; 
-            const palletGroup = new THREE.Group(); const pallet = new THREE.Mesh(this.geos.pallet, this.mats.pallet); pallet.position.y = -0.1; pallet.receiveShadow = true; pallet.castShadow = true; 
-            this.freezeStaticObject(pallet); palletGroup.add(pallet); palletGroup.position.x = currentX; laneGroup.add(palletGroup); 
-            
-            this.logs.push({ mesh: palletGroup, direction: direction, speed: speed, laneZ: laneGroup.position.z, width: 2.5 }); 
-            currentX += length + gap; 
-        } 
-    }
-
+    addPallets(laneGroup) { const direction = Math.random() > 0.5 ? 1 : -1; const speed = 0.04 + Math.random() * 0.06; let currentX = -42; while (currentX < 42) { const length = 2.5; const gap = Math.random() > 0.8 ? 5 + Math.random() * 3 : 1.5 + Math.random() * 2; const palletGroup = new THREE.Group(); const pallet = new THREE.Mesh(this.geos.pallet, this.mats.pallet); pallet.position.y = -0.1; pallet.receiveShadow = true; pallet.castShadow = true; this.freezeStaticObject(pallet); palletGroup.add(pallet); palletGroup.position.x = currentX; laneGroup.add(palletGroup); this.logs.push({ mesh: palletGroup, direction: direction, speed: speed, laneZ: laneGroup.position.z, width: 2.5 }); currentX += length + gap; } }
     addUltraRealisticTunnel(laneGroup, x, sideDir) { const tunnelGroup = new THREE.Group(); const leftWall = new THREE.Mesh(this.geos.tunnelWall, this.mats.tunnelGranite); leftWall.position.set(0, 0.8, 1.2); leftWall.receiveShadow = true; leftWall.castShadow = true; const rightWall = new THREE.Mesh(this.geos.tunnelWall, this.mats.tunnelGranite); rightWall.position.set(0, 0.8, -1.2); rightWall.receiveShadow = true; rightWall.castShadow = true; const arch = new THREE.Mesh(this.geos.tunnelMainArch, this.mats.tunnelGranite); arch.rotation.z = Math.PI / 2; arch.position.y = 2.4; arch.receiveShadow = true; arch.castShadow = true; const trim = new THREE.Mesh(this.geos.tunnelTrimArch, this.mats.tunnelTrim); trim.rotation.z = Math.PI / 2; trim.position.set(0.6 * -sideDir, 2.4, 0); trim.castShadow = true; [-1, 1].forEach(sideZ => { const base = new THREE.Mesh(this.geos.pillarBase, this.mats.tunnelGranite); base.position.set(0, 0, sideZ * 1.2); base.receiveShadow = true; tunnelGroup.add(base); }); const interior = new THREE.Mesh(this.geos.tunnelInterior, this.mats.tunnelInside); interior.rotation.y = sideDir * (Math.PI / 2); interior.position.set(sideDir * 0.58, 1.5, 0); tunnelGroup.add(leftWall, rightWall, arch, trim, interior); tunnelGroup.position.x = x; if (sideDir === -1) tunnelGroup.rotation.y = Math.PI; this.freezeStaticObject(tunnelGroup); laneGroup.add(tunnelGroup); }
     addDenseForest(laneGroup, startX, endX) { for (let x = startX; x <= endX; x += 2.0 + Math.random() * 2.0) { const tree = new THREE.Group(); const trunk = new THREE.Mesh(this.geos.trunk, this.mats.trunk); trunk.position.y = 0.4; trunk.castShadow = false; trunk.receiveShadow = false; for (let j = 0; j < 2; j++) { const leaves = new THREE.Mesh(this.geos.forestLeaf, this.mats.forestLeaf); leaves.position.y = 1.0 + (j * 0.7); leaves.scale.set(1 - j * 0.3, 1, 1 - j * 0.3); leaves.castShadow = false; leaves.receiveShadow = false; tree.add(leaves); } tree.add(trunk); tree.position.set(x, 0, (Math.random() * 1.5) - 0.7); const scale = 0.9 + Math.random() * 0.6; tree.scale.set(scale, scale, scale); this.freezeStaticObject(tree); laneGroup.add(tree); } }
     addTrees(laneGroup, laneZ) { const numTrees = Math.floor(Math.random() * 5) + 1; const occupiedPositions = new Set(); for (let i = 0; i < numTrees; i++) { let x = Math.floor(Math.random() * 30) - 15; if (occupiedPositions.has(x) || (x === 0 && laneGroup.position.z > -5)) continue; occupiedPositions.add(x); const vegGroup = new THREE.Group(); const typeSelector = Math.random(); let scale = 0.8 + Math.random() * 0.4; if (typeSelector < 0.4) { const trunk = new THREE.Mesh(this.geos.trunk, this.mats.trunk); trunk.position.y = 0.3; trunk.castShadow = true; trunk.receiveShadow = true; for (let j = 0; j < 3; j++) { const leaves = new THREE.Mesh(this.geos.pineLeaf, this.mats.pineLeaf); leaves.position.y = 0.8 + (j * 0.5); leaves.scale.set(1 - j * 0.2, 1, 1 - j * 0.2); leaves.castShadow = true; leaves.receiveShadow = true; vegGroup.add(leaves); } vegGroup.add(trunk); } else if (typeSelector < 0.7) { const trunk = new THREE.Mesh(this.geos.trunk, this.mats.trunk); trunk.position.y = 0.3; trunk.castShadow = true; trunk.receiveShadow = true; const leaves = new THREE.Mesh(this.geos.sphereLeaf, this.mats.roundLeaf); leaves.position.y = 1.0; leaves.scale.set(1, 0.8 + Math.random() * 0.5, 1); leaves.castShadow = true; leaves.receiveShadow = true; vegGroup.add(trunk, leaves); } else { const bush = new THREE.Mesh(this.geos.sphereLeaf, this.mats.bush); bush.position.y = 0.3; bush.scale.set(1 + Math.random() * 0.5, 0.5 + Math.random() * 0.3, 1 + Math.random() * 0.5); bush.castShadow = true; bush.receiveShadow = true; vegGroup.add(bush); scale = 0.6 + Math.random() * 0.4; } vegGroup.position.x = x; vegGroup.scale.set(scale, scale, scale); this.freezeStaticObject(vegGroup); laneGroup.add(vegGroup); this.obstacles.add(`${x},${laneZ}`); } }
-    
-    addCoin(laneGroup, laneZ) {
-        const x = Math.floor(Math.random() * 26) - 13; // Posição X aleatória
-        if (this.isObstacle(x, laneZ)) return; // Não cria dentro de árvores
 
-        const coin = new THREE.Mesh(this.geos.coinGeo, this.mats.coinMat);
-        coin.rotation.x = Math.PI / 2; // Põe a moeda de pé
-        coin.position.set(x, 0.5, 0); // Fica a flutuar a meio metro do chão
-        
-        laneGroup.add(coin);
-        this.coins.push({ mesh: coin, laneZ: laneZ, collected: false, startY: 0.5 });
-    }
-
-    addCar(laneGroup, depth) { 
+    addCar(laneGroup, depth, isBlackout) { 
         const direction = Math.random() > 0.5 ? 1 : -1; 
         let baseSpeed = 0.05 + Math.random() * 0.08; baseSpeed += (depth * 0.001); 
         let isTruck = Math.random() > 0.9;
@@ -365,10 +457,9 @@ export class World {
         signal.add(pole, lBox, rL1, rL2); laneGroup.add(signal); 
         trainGroup.position.x = direction === 1 ? -60 : 60; if (direction === -1) trainGroup.rotation.y = Math.PI; 
         
-        // NOVO: Criar a Coluna 3D (PositionalAudio) atrelada ao comboio
         const trainSound = new THREE.PositionalAudio(this.audioListener);
-        trainSound.setRefDistance(10); // Distância até o som começar a perder volume
-        trainSound.setRolloffFactor(2.0); // Efeito Doppler (afastamento)
+        trainSound.setRefDistance(10); 
+        trainSound.setRolloffFactor(2.0); 
         trainSound.setVolume(0.8);
         trainGroup.add(trainSound);
         
@@ -398,17 +489,27 @@ export class World {
         } 
     }
 
+    // --- LOOP DO MUNDO ---
     update(delta, playerPos) { 
-
+        this.time = (this.time || 0) + delta; const playerZ = playerPos.z || 0;
+        
         this.coins.forEach(c => {
             if (!c.collected) {
-                c.mesh.rotation.z += delta * 3.0; // Roda
-                c.mesh.position.y = c.startY + Math.sin(this.time * 4) * 0.1; // Flutua suavemente
+                c.mesh.rotation.z += delta * 3.0; 
+                c.mesh.position.y = c.startY + Math.sin(this.time * 4) * 0.1; 
             }
         });
 
-        this.time = (this.time || 0) + delta; const playerZ = playerPos.z || 0;
-        
+        // Atualiza a máquina dos LASERS
+        this.lasers.forEach(l => {
+            l.timer -= delta;
+            if (l.timer <= 0) {
+                l.isOn = !l.isOn;
+                l.timer = l.isOn ? 1.5 : 2.0; // Fica ON durante 1.5s, OFF durante 2s
+                l.mesh.material = l.isOn ? this.mats.laserOn : this.mats.laserOff;
+            }
+        });
+
         this.animateLiquid(this.geos.river, 2.5, 0.08);
         this.animateLiquid(this.geos.acid, 4.0, 0.1);
 
@@ -418,15 +519,12 @@ export class World {
         this.conveyors.forEach(c => { c.rollers.forEach(r => r.rotation.y -= c.speed * c.direction * delta * 40); c.stripes.forEach(s => { s.position.x += c.speed * c.direction * delta * 60; if (c.direction === 1 && s.position.x > 14) s.position.x = -14; if (c.direction === -1 && s.position.x < -14) s.position.x = 14; }); });
         this.gears.forEach(g => { g.mesh.rotation.z += g.speed * g.direction * delta * 60; });
         
-        // NOVO: Atualização dos Comboios com Áudio
         this.trains.forEach(t => { 
             if (t.state === 'IDLE') { 
                 t.timer -= delta; 
                 if (t.timer <= 0) { 
                     t.state = 'WARNING'; 
-                    t.timer = 1.8; // Tempo de aviso
-                    
-                    // Toca o ficheiro MP3 caso já tenha feito o load!
+                    t.timer = 1.8; 
                     if (t.sound && !t.sound.isPlaying && this.audioBuffers['train']) {
                         if (!t.sound.buffer) t.sound.setBuffer(this.audioBuffers['train']);
                         t.sound.play(); 
@@ -468,8 +566,7 @@ export class World {
             if (lane.z > cleanupZ) {
                 this.scene.remove(lane.group);
                 for (const obs of this.obstacles) if (obs.endsWith(`,${lane.z}`)) this.obstacles.delete(obs);
-                this.cars = this.cars.filter(c => c.laneZ !== lane.z); this.logs = this.logs.filter(l => l.laneZ !== lane.z); this.trains = this.trains.filter(t => t.laneZ !== lane.z); this.conveyors = this.conveyors.filter(c => c.laneZ !== lane.z); this.chasers = this.chasers.filter(c => c.laneZ !== lane.z); 
-                this.coins = this.coins.filter(c => c.laneZ !== lane.z);
+                this.cars = this.cars.filter(c => c.laneZ !== lane.z); this.logs = this.logs.filter(l => l.laneZ !== lane.z); this.trains = this.trains.filter(t => t.laneZ !== lane.z); this.conveyors = this.conveyors.filter(c => c.laneZ !== lane.z); this.chasers = this.chasers.filter(c => c.laneZ !== lane.z); this.coins = this.coins.filter(c => c.laneZ !== lane.z); this.lasers = this.lasers.filter(l => l.laneZ !== lane.z);
                 this.lanes.splice(i, 1);
             }
         }
@@ -479,48 +576,31 @@ export class World {
 
     reset() {
         this.lanes.forEach(lane => this.scene.remove(lane.group));
-        this.lanes = []; this.cars = []; this.coins = []; this.logs = []; this.trains = []; this.conveyors = []; this.gears = []; this.chasers = [];
+        this.lanes = []; this.cars = []; this.logs = []; this.trains = []; this.conveyors = []; this.gears = []; this.chasers = []; this.coins = []; this.lasers = [];
         this.obstacles.clear(); this.furthestZ = -30;
-        this.currentBiome = 'CLASSIC'; this.lanesUntilBiomeChange = 20;
+        
+        // RESET À MÁQUINA DE EVENTOS
+        this.currentBiome = 'CLASSIC'; 
+        this.lanesUntilEvent = 25;
+        this.currentEvent = 'NONE';
+        this.eventLanesRemaining = 0;
+        
         this.createInitialMap();
     }
 
     warmupShaders(renderer, camera) {
-        console.log("A iniciar Pré-aquecimento Total da GPU...");
+        console.log("Pré-aquecimento...");
         const warmupGroup = new THREE.Group();
         this.scene.add(warmupGroup);
-
         const sampleTypes = ['road', 'river', 'railroad', 'conveyor', 'acid_pit', 'factory_floor', 'grass'];
         sampleTypes.forEach((type, i) => {
             const tempLane = new THREE.Group();
-            const groundGeo = (type === 'river') ? this.geos.river : (type === 'acid_pit') ? this.geos.acid : this.geos.lane;
-            const ground = new THREE.Mesh(groundGeo, this.mats.grass);
+            const ground = new THREE.Mesh(this.geos.lane, this.mats.grass);
             tempLane.add(ground);
-
-            if (type === 'road') this.addCar(tempLane, 0);
-            if (type === 'river') this.addLog(tempLane);
-            if (type === 'railroad') this.addRailroad(tempLane);
-            if (type === 'grass') this.addTrees(tempLane, 0);
-            if (type === 'factory_floor') {
-                this.addFactoryCrates(tempLane, 0);
-                this.addChaser(tempLane, 'factory_floor', 0);
-            }
-            if (type === 'acid_pit') this.addPallets(tempLane);
-            
             warmupGroup.add(tempLane);
         });
-
-        warmupGroup.traverse((child) => {
-            if (child.isMesh) {
-                child.frustumCulled = false;
-            }
-        });
-
-        renderer.compile(this.scene, camera);
-        renderer.render(this.scene, camera);
-
+        warmupGroup.traverse((child) => { if (child.isMesh) child.frustumCulled = false; });
+        renderer.compile(this.scene, camera); renderer.render(this.scene, camera);
         this.scene.remove(warmupGroup);
-        this.cars = []; this.logs = []; this.trains = []; this.chasers = []; this.conveyors = [];
-        console.log("GPU PREPARADA: Sistema estável a 100%.");
     }
 }

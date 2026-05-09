@@ -8,6 +8,7 @@ export class World {
         this.lanes = [];
         this.laneWidth = 80; 
         this.cars = []; 
+        this.coins = [];
         this.logs = []; 
         this.birds = []; 
         this.trains = []; 
@@ -126,7 +127,9 @@ export class World {
             signalBox: new THREE.MeshStandardMaterial({ color: 0x111111 }),
             signalLight: new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0 }),
             
-            birdMat: new THREE.MeshBasicMaterial({ color: 0x222222 })
+            birdMat: new THREE.MeshBasicMaterial({ color: 0x222222 }),
+
+            coinMat: new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 1.0, roughness: 0.2, emissive: 0xffaa00, emissiveIntensity: 0.8 }),
         };
 
         this.geos = {
@@ -146,7 +149,9 @@ export class World {
             trainRailGeo: new THREE.BoxGeometry(this.laneWidth, 0.05, 0.1), trainTieGeo: new THREE.BoxGeometry(0.2, 0.04, 0.8),
             trainBoiler: new THREE.CylinderGeometry(0.45, 0.45, 3.5, 24), trainBand: new THREE.CylinderGeometry(0.47, 0.47, 0.1, 24), trainStack: new THREE.CylinderGeometry(0.18, 0.12, 0.8, 16), trainStackCrown: new THREE.CylinderGeometry(0.25, 0.18, 0.15, 16), trainLantern: new THREE.BoxGeometry(0.3, 0.3, 0.3), trainLanternGlass: new THREE.BoxGeometry(0.1, 0.2, 0.2), trainCab: new THREE.BoxGeometry(1.2, 1.3, 0.9), trainCabTrim: new THREE.BoxGeometry(1.25, 0.1, 0.95), trainCatcher: new THREE.ConeGeometry(0.6, 0.8, 4), trainTenderBody: new THREE.BoxGeometry(1.8, 0.8, 0.85), trainTenderBar: new THREE.BoxGeometry(1.85, 0.1, 0.9), trainCarriageBody: new THREE.BoxGeometry(4.0, 1.1, 0.9), trainCarTrimTop: new THREE.BoxGeometry(4.05, 0.05, 0.95), trainCarTrimBot: new THREE.BoxGeometry(4.05, 0.05, 0.95), trainWinGeo: new THREE.BoxGeometry(0.35, 0.5, 0.95),
             signalPole: new THREE.CylinderGeometry(0.05, 0.05, 1.5), signalBoxGeo: new THREE.BoxGeometry(0.7, 0.4, 0.25), signalLightGeo: new THREE.CylinderGeometry(0.12, 0.12, 0.25, 16),
-            birdWing: new THREE.BoxGeometry(0.4, 0.05, 0.15)
+            birdWing: new THREE.BoxGeometry(0.4, 0.05, 0.15),
+
+            coinGeo: new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8), // Um octógono a imitar uma moeda low-poly
         };
 
         const rPositions = this.geos.river.attributes.position; const rY = []; for (let i = 0; i < rPositions.count; i++) rY.push(rPositions.getY(i)); this.geos.river.userData.originalY = rY;
@@ -207,8 +212,8 @@ export class World {
         }
 
         if (!isSafeZone && type !== 'transition_gate') {
-            if (type === 'grass') { this.addTrees(laneGroup, z); if (Math.random() < 0.12) this.addChaser(laneGroup, type, depth); }
-            else if (type === 'factory_floor') { this.addFactoryCrates(laneGroup, z); if (Math.random() < 0.12) this.addChaser(laneGroup, type, depth); }
+            if (type === 'grass') { this.addTrees(laneGroup, z); if (Math.random() < 0.12) this.addChaser(laneGroup, type, depth); if (Math.random() < 0.2) this.addCoin(laneGroup, z); }
+            else if (type === 'factory_floor') { this.addFactoryCrates(laneGroup, z); if (Math.random() < 0.12) this.addChaser(laneGroup, type, depth); if (Math.random() < 0.2) this.addCoin(laneGroup, z); }
             else if (type === 'river') this.addLog(laneGroup); else if (type === 'road') this.addCar(laneGroup, depth); else if (type === 'conveyor') this.addConveyorBelt(laneGroup); else if (type === 'acid_pit') this.addPallets(laneGroup); else if (type === 'railroad') this.addRailroad(laneGroup);
         }
 
@@ -274,6 +279,18 @@ export class World {
     addDenseForest(laneGroup, startX, endX) { for (let x = startX; x <= endX; x += 2.0 + Math.random() * 2.0) { const tree = new THREE.Group(); const trunk = new THREE.Mesh(this.geos.trunk, this.mats.trunk); trunk.position.y = 0.4; trunk.castShadow = false; trunk.receiveShadow = false; for (let j = 0; j < 2; j++) { const leaves = new THREE.Mesh(this.geos.forestLeaf, this.mats.forestLeaf); leaves.position.y = 1.0 + (j * 0.7); leaves.scale.set(1 - j * 0.3, 1, 1 - j * 0.3); leaves.castShadow = false; leaves.receiveShadow = false; tree.add(leaves); } tree.add(trunk); tree.position.set(x, 0, (Math.random() * 1.5) - 0.7); const scale = 0.9 + Math.random() * 0.6; tree.scale.set(scale, scale, scale); this.freezeStaticObject(tree); laneGroup.add(tree); } }
     addTrees(laneGroup, laneZ) { const numTrees = Math.floor(Math.random() * 5) + 1; const occupiedPositions = new Set(); for (let i = 0; i < numTrees; i++) { let x = Math.floor(Math.random() * 30) - 15; if (occupiedPositions.has(x) || (x === 0 && laneGroup.position.z > -5)) continue; occupiedPositions.add(x); const vegGroup = new THREE.Group(); const typeSelector = Math.random(); let scale = 0.8 + Math.random() * 0.4; if (typeSelector < 0.4) { const trunk = new THREE.Mesh(this.geos.trunk, this.mats.trunk); trunk.position.y = 0.3; trunk.castShadow = true; trunk.receiveShadow = true; for (let j = 0; j < 3; j++) { const leaves = new THREE.Mesh(this.geos.pineLeaf, this.mats.pineLeaf); leaves.position.y = 0.8 + (j * 0.5); leaves.scale.set(1 - j * 0.2, 1, 1 - j * 0.2); leaves.castShadow = true; leaves.receiveShadow = true; vegGroup.add(leaves); } vegGroup.add(trunk); } else if (typeSelector < 0.7) { const trunk = new THREE.Mesh(this.geos.trunk, this.mats.trunk); trunk.position.y = 0.3; trunk.castShadow = true; trunk.receiveShadow = true; const leaves = new THREE.Mesh(this.geos.sphereLeaf, this.mats.roundLeaf); leaves.position.y = 1.0; leaves.scale.set(1, 0.8 + Math.random() * 0.5, 1); leaves.castShadow = true; leaves.receiveShadow = true; vegGroup.add(trunk, leaves); } else { const bush = new THREE.Mesh(this.geos.sphereLeaf, this.mats.bush); bush.position.y = 0.3; bush.scale.set(1 + Math.random() * 0.5, 0.5 + Math.random() * 0.3, 1 + Math.random() * 0.5); bush.castShadow = true; bush.receiveShadow = true; vegGroup.add(bush); scale = 0.6 + Math.random() * 0.4; } vegGroup.position.x = x; vegGroup.scale.set(scale, scale, scale); this.freezeStaticObject(vegGroup); laneGroup.add(vegGroup); this.obstacles.add(`${x},${laneZ}`); } }
     
+    addCoin(laneGroup, laneZ) {
+        const x = Math.floor(Math.random() * 26) - 13; // Posição X aleatória
+        if (this.isObstacle(x, laneZ)) return; // Não cria dentro de árvores
+
+        const coin = new THREE.Mesh(this.geos.coinGeo, this.mats.coinMat);
+        coin.rotation.x = Math.PI / 2; // Põe a moeda de pé
+        coin.position.set(x, 0.5, 0); // Fica a flutuar a meio metro do chão
+        
+        laneGroup.add(coin);
+        this.coins.push({ mesh: coin, laneZ: laneZ, collected: false, startY: 0.5 });
+    }
+
     addCar(laneGroup, depth) { 
         const direction = Math.random() > 0.5 ? 1 : -1; 
         let baseSpeed = 0.05 + Math.random() * 0.08; baseSpeed += (depth * 0.001); 
@@ -382,6 +399,14 @@ export class World {
     }
 
     update(delta, playerPos) { 
+
+        this.coins.forEach(c => {
+            if (!c.collected) {
+                c.mesh.rotation.z += delta * 3.0; // Roda
+                c.mesh.position.y = c.startY + Math.sin(this.time * 4) * 0.1; // Flutua suavemente
+            }
+        });
+
         this.time = (this.time || 0) + delta; const playerZ = playerPos.z || 0;
         
         this.animateLiquid(this.geos.river, 2.5, 0.08);
@@ -444,6 +469,7 @@ export class World {
                 this.scene.remove(lane.group);
                 for (const obs of this.obstacles) if (obs.endsWith(`,${lane.z}`)) this.obstacles.delete(obs);
                 this.cars = this.cars.filter(c => c.laneZ !== lane.z); this.logs = this.logs.filter(l => l.laneZ !== lane.z); this.trains = this.trains.filter(t => t.laneZ !== lane.z); this.conveyors = this.conveyors.filter(c => c.laneZ !== lane.z); this.chasers = this.chasers.filter(c => c.laneZ !== lane.z); 
+                this.coins = this.coins.filter(c => c.laneZ !== lane.z);
                 this.lanes.splice(i, 1);
             }
         }
@@ -453,7 +479,7 @@ export class World {
 
     reset() {
         this.lanes.forEach(lane => this.scene.remove(lane.group));
-        this.lanes = []; this.cars = []; this.logs = []; this.trains = []; this.conveyors = []; this.gears = []; this.chasers = [];
+        this.lanes = []; this.cars = []; this.coins = []; this.logs = []; this.trains = []; this.conveyors = []; this.gears = []; this.chasers = [];
         this.obstacles.clear(); this.furthestZ = -30;
         this.currentBiome = 'CLASSIC'; this.lanesUntilBiomeChange = 20;
         this.createInitialMap();

@@ -4,6 +4,11 @@ import { World } from './world.js';
 import GUI from 'https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js';
 import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
+// NOVO: Imports para o Post-Processing (Efeitos Visuais de Câmara)
+import { EffectComposer } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+
 // ==========================================
 // 1. CONFIGURAÇÃO BASE (TURBO MODE)
 // ==========================================
@@ -18,11 +23,9 @@ scene.fog = new THREE.Fog(0x6eb8ff, 10, 45);
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 100);
 scene.add(camera); 
 
-// Adicionar "Ouvidos" à lente da Câmara para o som 3D
 const audioListener = new THREE.AudioListener();
 camera.add(audioListener);
 
-// Canal de Efeitos Sonoros Global do Jogador
 const globalSFX = new THREE.Audio(audioListener);
 
 function playSFX(name, volume = 0.5) {
@@ -37,6 +40,22 @@ function playSFX(name, volume = 0.5) {
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(1); 
+
+// ==========================================
+// 1.2 POST-PROCESSING (EFEITOS NEON / BLOOM)
+// ==========================================
+// 1. Criar o Compositor que vai substituir o Renderer normal
+const composer = new EffectComposer(renderer);
+
+// 2. Passar a cena normal para o compositor
+const renderScene = new RenderPass(scene, camera);
+composer.addPass(renderScene);
+
+// 3. Criar o Filtro de Brilho (Bloom)
+// Parâmetros: (Resolução, Intensidade, Raio, Limiar)
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.5, 0.6);
+composer.addPass(bloomPass);
+
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enabled = false; 
@@ -59,7 +78,6 @@ class ParticleSystem {
         this.particles = [];
         this.geo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
         
-        // Usamos BasicMaterial porque as partículas devem "brilhar" (não precisam de luz/sombra)
         this.mats = {
             dust: new THREE.MeshBasicMaterial({ color: 0xdddddd }),
             water: new THREE.MeshBasicMaterial({ color: 0x4fc3f7 }),
@@ -77,32 +95,28 @@ class ParticleSystem {
             else if(type === 'crash') mat = Math.random() > 0.5 ? this.mats.blood : this.mats.metal;
             
             const mesh = new THREE.Mesh(this.geo, mat);
-            // Espalha a posição inicial ligeiramente
             mesh.position.set(x + (Math.random()-0.5)*0.8, y + 0.2, z + (Math.random()-0.5)*0.8);
             
-            // Física Básica: Vetores de Força
             let vx = (Math.random() - 0.5) * 4;
-            let vy = Math.random() * 5 + 2; // Força para cima
+            let vy = Math.random() * 5 + 2; 
             let vz = (Math.random() - 0.5) * 4;
             let startScale = 1.0;
             
-            // Comportamentos Diferentes
             if(type === 'dust') {
-                vx *= 0.3; vy = Math.random() * 2 + 1; vz *= 0.3; // Poeira não salta muito
+                vx *= 0.3; vy = Math.random() * 2 + 1; vz *= 0.3; 
                 startScale = 0.5;
             } else if(type === 'crash') {
-                vx *= 2.5; vy *= 1.5; vz *= 2.5; // Explosão mais violenta
+                vx *= 2.5; vy *= 1.5; vz *= 2.5; 
                 startScale = 1.5;
             }
             
             mesh.scale.setScalar(startScale);
             this.scene.add(mesh);
             
-            // Guarda na lista para atualizar a cada frame
             this.particles.push({ 
                 mesh, vx, vy, vz, 
                 life: 1.0, 
-                decay: Math.random() * 1.5 + 0.8, // Quão rápido desaparece
+                decay: Math.random() * 1.5 + 0.8, 
                 baseScale: startScale
             });
         }
@@ -117,16 +131,14 @@ class ParticleSystem {
                 this.scene.remove(p.mesh);
                 this.particles.splice(i, 1);
             } else {
-                p.vy -= 18 * delta; // Efeito da Gravidade
+                p.vy -= 18 * delta; 
                 p.mesh.position.x += p.vx * delta;
                 p.mesh.position.y += p.vy * delta;
                 p.mesh.position.z += p.vz * delta;
                 
-                // Rotação aleatória baseada na velocidade
                 p.mesh.rotation.x += p.vx * delta;
                 p.mesh.rotation.y += p.vy * delta;
                 
-                // Encolhe ao estilo voxel (em vez de ficar transparente)
                 const currentScale = Math.max(0, p.life * p.baseScale);
                 p.mesh.scale.setScalar(currentScale);
             }
@@ -164,7 +176,7 @@ scene.add(directionalLight);
 const hemisphereLight = new THREE.HemisphereLight(0x7cb9e8, 0x5c4033, 0.6);
 scene.add(hemisphereLight);
 
-const gui = new GUI({ title: 'Painel de Iluminação' });
+const gui = new GUI({ title: 'Painel de Desenvolvimento' });
 gui.domElement.style.position = 'absolute';
 gui.domElement.style.top = '100px'; 
 gui.domElement.style.right = '15px';
@@ -187,9 +199,16 @@ luzHemisferica.addColor({ ceu: hemisphereLight.color.getHex() }, 'ceu').onChange
 luzHemisferica.addColor({ chao: hemisphereLight.groundColor.getHex() }, 'chao').onChange(v => hemisphereLight.groundColor.setHex(v)).name('Cor do Chão');
 luzHemisferica.add(hemisphereLight, 'intensity', 0, 2).name('Intensidade');
 
+// NOVO: Adicionado Controlo do Efeito Bloom ao teu Painel!
+const efeitoBloom = gui.addFolder('Efeito Neon (Bloom)');
+efeitoBloom.add(bloomPass, 'threshold', 0.0, 1.0).name('Limiar de Brilho').onChange(v => bloomPass.threshold = Number(v));
+efeitoBloom.add(bloomPass, 'strength', 0.0, 3.0).name('Intensidade').onChange(v => bloomPass.strength = Number(v));
+efeitoBloom.add(bloomPass, 'radius', 0.0, 1.0).name('Raio').onChange(v => bloomPass.radius = Number(v));
+
 luzAmbiente.close();
 luzDirecional.close();
 luzHemisferica.close();
+efeitoBloom.close();
 gui.hide(); 
 
 // ==========================================
@@ -221,13 +240,16 @@ let deathLineZ = 5;
 const cameraTarget = new THREE.Vector3(0, 0, 0);
 let deathTimer = 0;
 
+let totalCoins = parseInt(localStorage.getItem('crossyRun_coins')) || 0;
+let unlockedChars = JSON.parse(localStorage.getItem('crossyRun_unlocked')) || ['TIMEKEEPER'];
+
 const charList = [
-    { id: 'TIMEKEEPER', name: 'O Cronometrista' },
-    { id: 'JUGGERNAUT', name: 'O Juggernaut' },
-    { id: 'GHOST', name: 'O Fantasma' }
+    { id: 'TIMEKEEPER', name: 'O Cronometrista', price: 0 }, // Grátis inicial
+    { id: 'JUGGERNAUT', name: 'O Juggernaut', price: 50 },  // Custa 50 Moedas
+    { id: 'GHOST', name: 'O Fantasma', price: 100 }         // Custa 100 Moedas
 ];
 let currentCharIndex = 0;
-let menuCharacter = null; 
+let menuCharacter = null;
 
 // Referências HTML
 const mainMenu = document.getElementById('main-menu');
@@ -250,6 +272,13 @@ const uiFps = document.getElementById('ui-fps');
 const uiMs = document.getElementById('ui-ms');
 const uiMem = document.getElementById('ui-mem');
 
+const menuCoinCounter = document.getElementById('menu-coin-counter');
+const gameCoinCounter = document.getElementById('game-coin-counter');
+
+const btnDevTools = document.getElementById('btn-dev-tools');
+
+if (menuCoinCounter) menuCoinCounter.innerText = totalCoins;
+
 if (menuHighScore) menuHighScore.innerText = highScore;
 
 let framesContados = 0;
@@ -259,19 +288,25 @@ let ultimoTempoMecanica = performance.now();
 // 3.5 LÓGICA DO SHOWCASE DE SELEÇÃO
 // ==========================================
 function updateShowcase() {
-    if (menuCharacter && menuCharacter.mesh) {
-        camera.remove(menuCharacter.mesh);
-    }
+    if (menuCharacter && menuCharacter.mesh) camera.remove(menuCharacter.mesh);
     
     menuCharacter = new Player(scene, charList[currentCharIndex].id);
-    scene.remove(menuCharacter.mesh); 
-    camera.add(menuCharacter.mesh);   
-
-    menuCharacter.mesh.position.set(2.5, -0.5, -6); 
-    menuCharacter.mesh.scale.set(1.5, 1.5, 1.5); 
-    menuCharacter.mesh.rotation.x = 0.1; 
+    scene.remove(menuCharacter.mesh); camera.add(menuCharacter.mesh);   
+    menuCharacter.mesh.position.set(2.5, -0.5, -6); menuCharacter.mesh.scale.set(1.5, 1.5, 1.5); menuCharacter.mesh.rotation.x = 0.1; 
     
     if (charNameDisplay) charNameDisplay.innerText = charList[currentCharIndex].name;
+
+    // Lógica da Loja Visual
+    const charInfo = charList[currentCharIndex];
+    const isUnlocked = unlockedChars.includes(charInfo.id);
+
+    if (isUnlocked) {
+        btnStart.innerText = "INICIAR JOGO";
+        btnStart.style.background = "#FFD700";
+    } else {
+        btnStart.innerText = `COMPRAR (${charInfo.price} MOEDAS)`;
+        btnStart.style.background = totalCoins >= charInfo.price ? "#00ff00" : "#555555";
+    }
 }
 
 updateShowcase();
@@ -290,11 +325,55 @@ if (btnNextChar) {
 }
 
 // ==========================================
+// 3.8 FERRAMENTAS DE DEVELOPER (CHEATS)
+// ==========================================
+const devCheats = {
+    adicionarMoedas: () => {
+        totalCoins += 1000;
+        localStorage.setItem('crossyRun_coins', totalCoins);
+        if (menuCoinCounter) menuCoinCounter.innerText = totalCoins;
+        if (gameCoinCounter) gameCoinCounter.innerText = totalCoins;
+        updateShowcase(); // Atualiza o botão da loja instantaneamente
+        playSFX('powerup', 0.6);
+        particleSystem.spawn(2.5, 0.5, -6, 'dust', 20); // Festeja no Showcase!
+    },
+    zerarMoedas: () => {
+        totalCoins = 0;
+        localStorage.setItem('crossyRun_coins', totalCoins);
+        if (menuCoinCounter) menuCoinCounter.innerText = totalCoins;
+        if (gameCoinCounter) gameCoinCounter.innerText = totalCoins;
+        updateShowcase();
+    },
+    desbloquearTudo: () => {
+        // Pega em todos os IDs da lista de personagens
+        unlockedChars = charList.map(c => c.id); 
+        localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars));
+        updateShowcase();
+        playSFX('jump', 0.5);
+    },
+    bloquearTudo: () => {
+        // Volta a deixar apenas o primeiro herói na conta
+        unlockedChars = ['TIMEKEEPER']; 
+        currentCharIndex = 0; // Força a voltar para o herói grátis
+        localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars));
+        updateShowcase();
+    }
+};
+
+// Adiciona uma nova pasta ao Painel (GUI) para os Cheats
+const cheatFolder = gui.addFolder('🛠️ Cheats de Developer');
+cheatFolder.add(devCheats, 'adicionarMoedas').name('💰 +1000 Moedas');
+cheatFolder.add(devCheats, 'zerarMoedas').name('💸 Ficar Pobre (0)');
+cheatFolder.add(devCheats, 'desbloquearTudo').name('🔓 Desbloquear Todos');
+cheatFolder.add(devCheats, 'bloquearTudo').name('🔒 Bloquear Heróis');
+cheatFolder.close(); // Fica fechada por defeito para não atrapalhar a luz
+
+// ==========================================
 // 4. LÓGICA DE JOGO E CONTROLOS
 // ==========================================
 function resetEstadoMundo() {
     world.reset();
-    particleSystem.reset(); // LIMPA AS PARTÍCULAS MORTAS!
+    particleSystem.reset(); 
     runScore = 0;
     deathLineZ = 5;
     
@@ -338,10 +417,25 @@ if (btnExitEdit) {
     });
 }
 
+if (btnDevTools) {
+    btnDevTools.addEventListener('click', () => {
+        // Se estiver escondido, mostra. Se estiver visível, esconde.
+        if (gui._hidden) {
+            gui.show();
+            playSFX('jump', 0.3); // Feedback sonoro suave ao abrir
+        } else {
+            gui.hide();
+        }
+        btnDevTools.blur(); // Retira o foco do botão para não atrapalhar o teclado
+    });
+}
+
 function iniciarJogo() {
     if (THREE.AudioContext.getContext().state === 'suspended') {
         THREE.AudioContext.getContext().resume();
     }
+
+    gui.hide();
 
     if (player && player.mesh) scene.remove(player.mesh);
     player = new Player(scene, charList[currentCharIndex].id); 
@@ -354,11 +448,42 @@ function iniciarJogo() {
     atualizarUIEnergia();
     
     if (menuCharacter && menuCharacter.mesh) menuCharacter.mesh.visible = false; 
+
+    if (gameCoinCounter) gameCoinCounter.innerText = totalCoins;
     
     if (btnStart) btnStart.blur();
 }
 
-if (btnStart) btnStart.addEventListener('click', iniciarJogo);
+if (btnStart) {
+    btnStart.addEventListener('click', () => {
+        const charInfo = charList[currentCharIndex];
+        const isUnlocked = unlockedChars.includes(charInfo.id);
+
+        if (isUnlocked) {
+            iniciarJogo();
+        } else {
+            // Tenta Comprar!
+            if (totalCoins >= charInfo.price) {
+                totalCoins -= charInfo.price;
+                unlockedChars.push(charInfo.id); // Desbloqueia!
+                
+                // Grava imediatamente no PC do utilizador
+                localStorage.setItem('crossyRun_coins', totalCoins);
+                localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars));
+                
+                if (menuCoinCounter) menuCoinCounter.innerText = totalCoins;
+                playSFX('powerup', 0.8); // Som de vitória/compra
+                particleSystem.spawn(2.5, -0.5, -5, 'dust', 30); // Fogo de artifício no troféu!
+                updateShowcase(); // Atualiza o botão para "INICIAR JOGO"
+            } else {
+                // Não tem dinheiro
+                btnStart.innerText = "MOEDAS INSUFICIENTES!";
+                setTimeout(() => updateShowcase(), 1000); // Volta ao normal após 1 seg
+            }
+        }
+    });
+}
+
 if (btnChangeChar) {
     btnChangeChar.addEventListener('click', () => {
         resetEstadoMundo(); 
@@ -420,7 +545,6 @@ window.addEventListener('keydown', (event) => {
     
     if (!wasMoving && player.isMoving) {
         playSFX('jump', 0.2);
-        // NOVO: Levanta 5 blocos de poeira sempre que salta com sucesso
         particleSystem.spawn(player.mesh.position.x, 0.2, player.mesh.position.z, 'dust', 5);
     }
     
@@ -448,7 +572,6 @@ function animate() {
     }
     if (uiMs) uiMs.innerText = Math.round(delta * 1000);
 
-    // NOVO: Atualizar a Física de todas as Partículas
     particleSystem.update(delta);
 
     // --- LÓGICA DO JOGO ---
@@ -510,6 +633,30 @@ function animate() {
             stormWall.material.emissiveIntensity = 0.5 + Math.sin(Date.now() * 0.005) * 0.3; 
         }
 
+        // Colisão com Moedas (Apanhar Dinheiro)
+        world.coins.forEach(c => {
+            if (!c.collected) {
+                const cx = c.mesh.position.x;
+                const cz = c.laneZ; // A posição Z real no mundo
+                
+                // Mede a distância entre o jogador e a moeda
+                const dist = Math.sqrt(Math.pow(px - cx, 2) + Math.pow(pz - cz, 2));
+                if (dist < 0.8) {
+                    c.collected = true;
+                    c.mesh.visible = false; // Esconde a moeda
+                    
+                    totalCoins++;
+                    localStorage.setItem('crossyRun_coins', totalCoins); // Salva o progresso
+                    
+                    if (gameCoinCounter) gameCoinCounter.innerText = totalCoins;
+                    if (menuCoinCounter) menuCoinCounter.innerText = totalCoins;
+                    
+                    playSFX('powerup', 0.3); // Opcional: Arranja um ficheiro 'coin.mp3' no futuro!
+                    particleSystem.spawn(cx, 0.5, cz, 'dust', 10); // Faíscas ao apanhar!
+                }
+            }
+        });
+
         if (pz > deathLineZ + 1.5) { isGameOver = true; causeOfDeath = "Engolido pela Tempestade!"; }
 
         if (!isGameOver) {
@@ -519,7 +666,6 @@ function animate() {
                 if (Math.abs(pz - car.laneZ) < zTolerance && Math.abs(px - car.mesh.position.x) < (car.width / 2 + 0.3)) {
                     if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
                         car.speed = 0; car.mesh.position.y += 15 * delta; car.mesh.position.x += car.direction * 10 * delta; car.mesh.rotation.z += 15 * delta;
-                        // NOVO: Sai faíscas ao esmagar o carro!
                         particleSystem.spawn(px, 1.0, pz, 'crash', 10);
                         playSFX('crash', 0.4);
                     } else { isGameOver = true; causeOfDeath = "Atropelado!"; break; }
@@ -578,7 +724,6 @@ function animate() {
             }
         }
 
-        // --- TRANSIÇÃO PARA A MORTE ---
         if (isGameOver) {
             console.log("MORTE:", causeOfDeath);
             if(player.die) player.die(causeOfDeath);
@@ -586,7 +731,6 @@ function animate() {
             gameState = 'DYING';
             deathTimer = 1.5; 
 
-            // NOVO: Explosão de Partículas com a Morte!
             let pType = 'crash';
             let deathSound = 'crash';
             
@@ -594,7 +738,6 @@ function animate() {
             else if (causeOfDeath === "Derreteste no Ácido!") { pType = 'acid'; deathSound = 'splash'; }
             else if (causeOfDeath === "Engolido pela Tempestade!") { pType = 'dust'; }
             
-            // Dispara 30 partículas coloridas consoante a morte
             particleSystem.spawn(player.mesh.position.x, player.mesh.position.y, player.mesh.position.z, pType, 30);
             playSFX(deathSound, 0.7);
 
@@ -636,11 +779,17 @@ function animate() {
         }
     }
 
-    renderer.render(scene, camera);
+    // NOVO: Em vez de renderizar a cena normalmente, passamos a renderizar através do Compositor!
+    composer.render();
 }
 
 window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight; 
+    camera.updateProjectionMatrix(); 
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    // NOVO: Atualiza a resolução do Filtro de Brilho se a janela mudar de tamanho
+    composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 animate();

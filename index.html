@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>Crossy Run 3D - Gold Standard</title>
+    <title>Crossy Run 3D</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         #info {
@@ -86,6 +86,7 @@
         <div id="main-menu" style="pointer-events: auto; text-align: center;">
             <h1 style="color: white; font-family: 'Arial Black', sans-serif; font-size: 60px; text-shadow: 4px 4px 0 #cc0000; margin-bottom: 0;">CROSSY RUN</h1>
             <h2 style="color: #FFD700; font-family: 'Courier New', monospace; text-shadow: 2px 2px 0 #000; margin-top: 0; margin-bottom: 30px;">HIGH SCORE: <span id="menu-high-score">0</span></h2>
+            <h2 style="color: #00ffff; font-family: 'Courier New', monospace; text-shadow: 2px 2px 0 #000; margin-top: 0; margin-bottom: 30px;">MOEDAS: <span id="menu-coin-counter">0</span></h2>
             
             <div class="character-selection" style="margin-bottom: 25px; display: flex; align-items: center; justify-content: center; gap: 30px;">
                 <button id="btn-prev-char" style="font-size: 40px; background: none; border: none; color: #FFD700; cursor: pointer; text-shadow: 3px 3px 0 #000; transition: transform 0.2s;">◀</button>
@@ -99,6 +100,9 @@
             <div style="display: flex; gap: 15px; justify-content: center;">
                 <button id="btn-start" style="padding: 15px 30px; font-size: 24px; font-weight: bold; background: #FFD700; border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 0 #b39700;">INICIAR JOGO</button>
                 <button id="btn-edit-light" style="padding: 15px 30px; font-size: 18px; font-weight: bold; background: #444; color: white; border: 2px solid #888; border-radius: 10px; cursor: pointer;">AJUSTAR LUZ</button>
+                <button id="btn-dev-tools" style="padding: 15px; font-size: 18px; background: #222; color: #fff; border: 2px solid #444; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    🛠️ <span style="font-size: 14px;">DEV</span>
+                </button>
             </div>
         </div>
 
@@ -121,6 +125,10 @@
             <h1 style="color: white; text-shadow: 2px 2px 0 #000; font-family: sans-serif; margin: 0;">Score: <span id="score-counter">0</span></h1>
             <h2 style="color: #FFD700; text-shadow: 2px 2px 0 #000; font-family: sans-serif; margin: 5px 0 0 0; font-size: 20px;">Best: <span id="best-score-counter">0</span></h2>
             <h3 style="color: white; text-shadow: 2px 2px 0 #000; font-family: sans-serif; margin-top: 5px;">Energia: <span id="energy-counter">0/10</span></h3>
+
+            <div style="position: absolute; top: 80px; right: 20px; font-size: 24px; color: #00ffff; font-family: 'Courier New', monospace; font-weight: bold; text-shadow: 2px 2px 0 #000; text-align: right;">
+                MOEDAS: <span id="game-coin-counter">0</span>
+            </div>
             
             <div id="perf-bar" style="position: absolute; top: 0px; right: 40px; background: rgba(20, 20, 20, 0.85); border: 2px solid #555; border-radius: 8px; padding: 10px 20px; font-family: 'Courier New', monospace; font-weight: bold; display: flex; gap: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
                 <div style="text-align: center;">

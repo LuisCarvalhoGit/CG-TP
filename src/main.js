@@ -8,12 +8,25 @@ import { EffectComposer } from 'https://unpkg.com/three@0.160.0/examples/jsm/pos
 import { RenderPass } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
 
+import { GLTFExporter } from 'https://unpkg.com/three@0.160.0/examples/jsm/exporters/GLTFExporter.js';
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x6eb8ff);
 scene.fog = new THREE.Fog(0x6eb8ff, 10, 45);
 
-const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 100);
-scene.add(camera); 
+// ==========================================
+// REQUISITO 2: CÂMARA PERSPETIVA E ORTOGRÁFICA
+// ==========================================
+const aspect = window.innerWidth / window.innerHeight;
+const frustumSize = 15; // Tamanho de visualização para a Ortográfica
+
+const perspCamera = new THREE.PerspectiveCamera(30, aspect, 0.1, 100);
+const orthoCamera = new THREE.OrthographicCamera((frustumSize * aspect) / -2, (frustumSize * aspect) / 2, frustumSize / 2, frustumSize / -2, 0.1, 100);
+
+// Define a Perspetiva como padrão inicial
+let camera = perspCamera; 
+scene.add(perspCamera);
+scene.add(orthoCamera);
 
 const audioListener = new THREE.AudioListener();
 camera.add(audioListener);
@@ -35,8 +48,6 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 const composer = new EffectComposer(renderer);
 const renderScene = new RenderPass(scene, camera);
 composer.addPass(renderScene);
-
-// BRILHO CORRIGIDO: Baixado para 0.8 para não queimar os olhos
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.8, 0.4, 0.6);
 composer.addPass(bloomPass);
 
@@ -44,18 +55,19 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enabled = false; controls.enableDamping = true; controls.dampingFactor = 0.05; controls.maxDistance = 50; 
 
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap; 
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 document.body.appendChild(renderer.domElement);
 
 // ==========================================
-// 1.5 SISTEMA DE PARTÍCULAS (VFX) COM DESINTEGRAÇÃO
+// 1.5 SISTEMA DE PARTÍCULAS (VFX) COM POOLING
 // ==========================================
 class ParticleSystem {
     constructor(scene) {
-        this.scene = scene; this.particles = []; 
-        this.geo = new THREE.BoxGeometry(0.35, 0.35, 0.35); // Ligeiramente maior para o chão
+        this.scene = scene; 
+        this.particles = []; 
+        this.geo = new THREE.BoxGeometry(0.35, 0.35, 0.35); 
         this.mats = { 
             dust: new THREE.MeshBasicMaterial({ color: 0xdddddd }), 
             water: new THREE.MeshBasicMaterial({ color: 0x4fc3f7 }), 
@@ -63,12 +75,24 @@ class ParticleSystem {
             blood: new THREE.MeshBasicMaterial({ color: 0xff3333 }), 
             metal: new THREE.MeshBasicMaterial({ color: 0x555555 }), 
             laser: new THREE.MeshBasicMaterial({color: 0xff0000}),
-            grass_crumble: new THREE.MeshBasicMaterial({ color: 0x4caf50 }), // Cor da Relva
-            road_crumble: new THREE.MeshBasicMaterial({ color: 0x2a2a2a })   // Cor da Estrada
+            grass_crumble: new THREE.MeshBasicMaterial({ color: 0x4caf50 }), 
+            road_crumble: new THREE.MeshBasicMaterial({ color: 0x2a2a2a })   
         };
+
+        this.pool = [];
+        for (let i = 0; i < 1000; i++) {
+            const mesh = new THREE.Mesh(this.geo, this.mats.dust);
+            mesh.visible = false; 
+            this.scene.add(mesh);
+            this.pool.push(mesh);
+        }
     }
+
     spawn(x, y, z, type, count, isFloor = false) {
         for(let i = 0; i < count; i++) {
+            if (this.pool.length === 0) return; 
+            const mesh = this.pool.pop();
+
             let mat = this.mats.dust;
             if(type === 'water') mat = this.mats.water; 
             else if(type === 'acid') mat = this.mats.acid; 
@@ -78,37 +102,46 @@ class ParticleSystem {
             else if(type === 'road_crumble') mat = this.mats.road_crumble;
             else if(type === 'metal') mat = this.mats.metal;
 
-            const mesh = new THREE.Mesh(this.geo, mat);
+            mesh.material = mat;
             mesh.position.set(x + (Math.random()-0.5)*0.8, y + 0.2, z + (Math.random()-0.5)*0.8);
+            mesh.visible = true; 
             
             let vx = (Math.random() - 0.5) * 4; let vy = Math.random() * 5 + 2; let vz = (Math.random() - 0.5) * 4; let startScale = 1.0;
             
             if (isFloor) {
-                // FÍSICA DE QUEDA DO CHÃO (Cai logo para baixo)
-                vx = (Math.random() - 0.5) * 2.0;
-                vy = -(Math.random() * 4 + 2); 
-                vz = (Math.random() - 0.5) * 2.0;
-                startScale = Math.random() * 0.8 + 0.8;
+                vx = (Math.random() - 0.5) * 2.0; vy = -(Math.random() * 4 + 2); vz = (Math.random() - 0.5) * 2.0; startScale = Math.random() * 0.8 + 0.8;
             } else if(type === 'dust') { vx *= 0.3; vy = Math.random() * 2 + 1; vz *= 0.3; startScale = 0.5; } 
             else if(type === 'crash' || type === 'laser') { vx *= 2.5; vy *= 1.5; vz *= 2.5; startScale = 1.5; }
             
-            mesh.scale.setScalar(startScale); this.scene.add(mesh);
+            mesh.scale.setScalar(startScale); 
             this.particles.push({ mesh, vx, vy, vz, life: 1.0, decay: Math.random() * 1.5 + 0.8, baseScale: startScale });
         }
     }
+
     update(delta) {
         for(let i = this.particles.length - 1; i >= 0; i--) {
             let p = this.particles[i]; p.life -= delta * p.decay;
-            if(p.life <= 0) { this.scene.remove(p.mesh); this.particles.splice(i, 1); } 
+            if(p.life <= 0) { 
+                p.mesh.visible = false; 
+                this.pool.push(p.mesh); 
+                this.particles.splice(i, 1); 
+            } 
             else { 
-                p.vy -= 18 * delta; // Gravidade afeta todas as partículas
+                p.vy -= 18 * delta; 
                 p.mesh.position.x += p.vx * delta; p.mesh.position.y += p.vy * delta; p.mesh.position.z += p.vz * delta; 
                 p.mesh.rotation.x += p.vx * delta; p.mesh.rotation.y += p.vy * delta; 
                 p.mesh.scale.setScalar(Math.max(0, p.life * p.baseScale)); 
             }
         }
     }
-    reset() { this.particles.forEach(p => this.scene.remove(p.mesh)); this.particles = []; }
+
+    reset() { 
+        this.particles.forEach(p => { 
+            p.mesh.visible = false; 
+            this.pool.push(p.mesh); 
+        }); 
+        this.particles = []; 
+    }
 }
 const particleSystem = new ParticleSystem(scene);
 
@@ -117,14 +150,36 @@ let shakeIntensity = 0;
 function triggerImpact(intensity, duration = 0.1) { shakeIntensity = intensity; hitStopTimer = duration; }
 
 // ==========================================
-// 2. ILUMINAÇÃO E GUI
+// REQUISITO 3: ILUMINAÇÃO E GUI CONFIGURÁVEL
 // ==========================================
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.3); scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xfff4e5, 1.8); directionalLight.position.set(15, 25, -15); directionalLight.castShadow = true; directionalLight.shadow.mapSize.set(2048, 2048); scene.add(directionalLight);
+const directionalLight = new THREE.DirectionalLight(0xfff4e5, 1.8); directionalLight.position.set(15, 25, -15); directionalLight.castShadow = true; directionalLight.shadow.mapSize.set(1024, 1024);
+
+// Restringe o cálculo das sombras apenas ao que o ecrã vê!
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 50;
+directionalLight.shadow.camera.left = -25;
+directionalLight.shadow.camera.right = 25;
+directionalLight.shadow.camera.top = 25;
+directionalLight.shadow.camera.bottom = -25;
+
+scene.add(directionalLight);
+scene.add(directionalLight.target);
+
 const hemisphereLight = new THREE.HemisphereLight(0x7cb9e8, 0x5c4033, 0.6); scene.add(hemisphereLight);
 
 const gui = new GUI({ title: 'Painel de Desenvolvimento' });
 gui.hide(); 
+
+const luzAmbiente = gui.addFolder('Luz Ambiente'); 
+luzAmbiente.add(ambientLight, 'visible').name('LIGAR/DESLIGAR'); // REQ 3 - Toggle
+luzAmbiente.addColor({ cor: ambientLight.color.getHex() }, 'cor').onChange(v => ambientLight.color.setHex(v)).name('Cor Base'); 
+luzAmbiente.add(ambientLight, 'intensity', 0, 2).name('Intensidade');
+
+const luzDirecional = gui.addFolder('Luz Direcional (Sol)'); 
+luzDirecional.add(directionalLight, 'visible').name('LIGAR/DESLIGAR'); // REQ 3 - Toggle
+luzDirecional.addColor({ cor: directionalLight.color.getHex() }, 'cor').onChange(v => directionalLight.color.setHex(v)).name('Cor do Sol'); 
+luzDirecional.add(directionalLight, 'intensity', 0, 5).name('Intensidade'); 
 
 // ==========================================
 // 3. VARIÁVEIS DE ESTADO E REFERÊNCIAS HTML
@@ -155,15 +210,11 @@ let framesContados = 0;
 let ultimoTempoMecanica = performance.now();
 let ultimoTempoFrame = performance.now(); 
 
-// ==========================================
-// 3.5 LÓGICA DO SHOWCASE E LOJA
-// ==========================================
 function updateShowcase() {
-    if (menuCharacter && menuCharacter.mesh) camera.remove(menuCharacter.mesh);
+    if (menuCharacter && menuCharacter.mesh) scene.remove(menuCharacter.mesh);
     menuCharacter = new Player(scene, charList[currentCharIndex].id);
-    scene.remove(menuCharacter.mesh); 
-    camera.add(menuCharacter.mesh); 
-    menuCharacter.mesh.position.set(2.5, -0.5, -6); menuCharacter.mesh.scale.set(1.5, 1.5, 1.5); menuCharacter.mesh.rotation.x = 0.1; 
+    scene.add(menuCharacter.mesh); 
+    menuCharacter.mesh.position.set(0, -0.5, 5); menuCharacter.mesh.scale.set(1.5, 1.5, 1.5); 
     if (charNameDisplay) charNameDisplay.innerText = charList[currentCharIndex].name;
 
     const charInfo = charList[currentCharIndex];
@@ -175,22 +226,107 @@ updateShowcase();
 if (btnPrevChar) { btnPrevChar.addEventListener('click', () => { currentCharIndex = (currentCharIndex - 1 + charList.length) % charList.length; updateShowcase(); }); }
 if (btnNextChar) { btnNextChar.addEventListener('click', () => { currentCharIndex = (currentCharIndex + 1) % charList.length; updateShowcase(); }); }
 
-const devCheats = {
-    adicionarMoedas: () => { totalCoins += 1000; localStorage.setItem('crossyRun_coins', totalCoins); if (menuCoinCounter) menuCoinCounter.innerText = totalCoins; if (gameCoinCounter) gameCoinCounter.innerText = totalCoins; updateShowcase(); playSFX('powerup', 0.6); particleSystem.spawn(2.5, 0.5, -6, 'dust', 20); },
-    zerarMoedas: () => { totalCoins = 0; localStorage.setItem('crossyRun_coins', totalCoins); if (menuCoinCounter) menuCoinCounter.innerText = totalCoins; if (gameCoinCounter) gameCoinCounter.innerText = totalCoins; updateShowcase(); },
-    desbloquearTudo: () => { unlockedChars = charList.map(c => c.id); localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars)); updateShowcase(); playSFX('jump', 0.5); },
-    bloquearTudo: () => { unlockedChars = ['TIMEKEEPER']; currentCharIndex = 0; localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars)); updateShowcase(); }
-};
-const cheatFolder = gui.addFolder('🛠️ Cheats de Developer'); cheatFolder.add(devCheats, 'adicionarMoedas').name('💰 +1000 Moedas'); cheatFolder.add(devCheats, 'zerarMoedas').name('💸 Ficar Pobre (0)'); cheatFolder.add(devCheats, 'desbloquearTudo').name('🔓 Desbloquear Todos'); cheatFolder.add(devCheats, 'bloquearTudo').name('🔒 Bloquear Heróis'); cheatFolder.close(); 
 
 // ==========================================
-// 4. LÓGICA DE JOGO E CONTROLOS
+// FERRAMENTAS DE DESENVOLVEDOR
 // ==========================================
+const devCheats = {
+    adicionarMoedas: () => { totalCoins += 1000; localStorage.setItem('crossyRun_coins', totalCoins); if (menuCoinCounter) menuCoinCounter.innerText = totalCoins; if (gameCoinCounter) gameCoinCounter.innerText = totalCoins; updateShowcase(); playSFX('powerup', 0.6); particleSystem.spawn(0, 0.5, 5, 'dust', 20); },
+    zerarMoedas: () => { totalCoins = 0; localStorage.setItem('crossyRun_coins', totalCoins); if (menuCoinCounter) menuCoinCounter.innerText = totalCoins; if (gameCoinCounter) gameCoinCounter.innerText = totalCoins; updateShowcase(); },
+    desbloquearTudo: () => { unlockedChars = charList.map(c => c.id); localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars)); updateShowcase(); playSFX('jump', 0.5); },
+    
+    // MEGA EXTRATOR: GERA E EXPORTA TODOS OS MODELOS DO JOGO
+    // MEGA EXTRATOR: GERA E EXPORTA TODOS OS MODELOS DO JOGO
+    exportarTodosOsModelos: () => {
+        console.log("A preparar a Mega Coleção de Assets...");
+        const exporter = new GLTFExporter();
+        const palco = new THREE.Group();
+        const linhaDeMontagem = new THREE.Group();
+        
+        // 1. SALVAGUARDA
+        const backups = {
+            cars: [...world.cars], logs: [...world.logs], trains: [...world.trains], 
+            chasers: [...world.chasers], coins: [...world.coins], lasers: [...world.lasers], 
+            powerUps: [...world.powerUps], conveyors: [...world.conveyors], gears: [...world.gears]
+        };
+
+        // 2. FABRICAÇÃO EM MASSA
+        charList.forEach(c => new Player(linhaDeMontagem, c.id));
+        world.addCar(linhaDeMontagem, 0, false); 
+        world.addLog(linhaDeMontagem);
+        world.addRailroad(linhaDeMontagem);
+        world.currentBiome = 'CLASSIC'; world.addChaser(linhaDeMontagem, 'grass', 0);
+        world.currentBiome = 'FACTORY'; world.addChaser(linhaDeMontagem, 'factory_floor', 0);
+        world.addCoin(linhaDeMontagem, 0);
+        world.addPowerUp(linhaDeMontagem, 0);
+        world.addLaser(linhaDeMontagem);
+        world.addFactoryBorders(linhaDeMontagem, -2, 2); 
+        world.addFactoryCrates(linhaDeMontagem, 0);
+        world.addConveyorBelt(linhaDeMontagem);
+        world.addPallets(linhaDeMontagem);
+        world.addAbyssPlatform(linhaDeMontagem);
+        world.addTrees(linhaDeMontagem, 0);
+        world.addTransitionGate(linhaDeMontagem);
+
+        // 3. EXTERMÍNIO IMEDIATO DE ÁUDIO E TEXTURAS MÁS (Antes de qualquer movimento)
+        const lixo = [];
+        linhaDeMontagem.traverse((c) => {
+            if (c.isAudio || c.isPositionalAudio) lixo.push(c);
+            
+            if (c.isMesh && c.material) {
+                const blindar = (mat) => {
+                    if (mat.map && (!mat.map.image || mat.map.isDataTexture)) mat.map = null;
+                    if (mat.normalMap && !mat.normalMap.image) mat.normalMap = null;
+                    mat.needsUpdate = true;
+                };
+                if (Array.isArray(c.material)) c.material.forEach(blindar);
+                else blindar(c.material);
+            }
+        });
+        lixo.forEach(c => c.removeFromParent()); // Remove o áudio com segurança
+
+        // 4. ORGANIZAÇÃO NA GALERIA (Movemos diretamente, SEM usar .clone() !)
+        let cx = 0, cz = 0;
+        const objetosFabricados = [...linhaDeMontagem.children]; 
+        objetosFabricados.forEach(child => {
+            child.position.set(cx, 0, cz);
+            child.rotation.set(0, 0, 0); 
+            palco.add(child);
+            
+            cx += 5; 
+            if (cx > 35) { cx = 0; cz += 5; } 
+        });
+
+        // 5. RESTAURAR O JOGO
+        Object.assign(world, backups);
+
+        // 6. EXPORTAÇÃO
+        exporter.parse(
+            palco,
+            function (gltf) {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(new Blob([JSON.stringify(gltf, null, 2)], { type: 'text/plain' }));
+                link.download = `crossy_run_mega_colecao.gltf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                console.log("SUCESSO ABSOLUTO! O catálogo inteiro foi descarregado.");
+            },
+            function (error) { console.error('Erro na exportação:', error); },
+            { binary: false } 
+        );
+    }
+};
+
+const cheatFolder = gui.addFolder('🛠️ Cheats e Extrator (DevTools)'); 
+cheatFolder.add(devCheats, 'adicionarMoedas').name('💰 +1000 Moedas'); 
+cheatFolder.add(devCheats, 'zerarMoedas').name('💸 Ficar Pobre (0)'); 
+cheatFolder.add(devCheats, 'desbloquearTudo').name('🔓 Desbloquear Todos'); 
+cheatFolder.add(devCheats, 'exportarTodosOsModelos').name('📦 Exportar TUDO (GLTF)');
 function resetEstadoMundo() {
     world.reset(); particleSystem.reset(); runScore = 0; deathLineZ = 5;
     activePowerUps.magnet = 0; activePowerUps.shield = 0; activePowerUps.time = 0;
     shieldVisual.visible = false;
-    
     if (scoreCounter) scoreCounter.innerText = "0";
     if (bestScoreCounter) { bestScoreCounter.innerText = highScore; bestScoreCounter.style.color = "#FFD700"; }
 }
@@ -203,10 +339,7 @@ function iniciarJogo() {
     if (THREE.AudioContext.getContext().state === 'suspended') THREE.AudioContext.getContext().resume();
     gui.hide();
     
-    if (menuCharacter && menuCharacter.mesh) {
-        camera.remove(menuCharacter.mesh);
-    }
-    
+    if (menuCharacter && menuCharacter.mesh) scene.remove(menuCharacter.mesh);
     if (player && player.mesh) scene.remove(player.mesh);
     player = new Player(scene, charList[currentCharIndex].id); 
     player.mesh.add(shieldVisual); 
@@ -220,8 +353,7 @@ function iniciarJogo() {
     if (btnStart) btnStart.blur();
 }
 
-if (btnStart) { btnStart.addEventListener('click', () => { const charInfo = charList[currentCharIndex]; if (unlockedChars.includes(charInfo.id)) { iniciarJogo(); } else { if (totalCoins >= charInfo.price) { totalCoins -= charInfo.price; unlockedChars.push(charInfo.id); localStorage.setItem('crossyRun_coins', totalCoins); localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars)); if (menuCoinCounter) menuCoinCounter.innerText = totalCoins; playSFX('powerup', 0.8); particleSystem.spawn(2.5, -0.5, -5, 'dust', 30); updateShowcase(); } else { btnStart.innerText = "MOEDAS INSUFICIENTES!"; setTimeout(() => updateShowcase(), 1000); } } }); }
-
+if (btnStart) { btnStart.addEventListener('click', () => { const charInfo = charList[currentCharIndex]; if (unlockedChars.includes(charInfo.id)) { iniciarJogo(); } else { if (totalCoins >= charInfo.price) { totalCoins -= charInfo.price; unlockedChars.push(charInfo.id); localStorage.setItem('crossyRun_coins', totalCoins); localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars)); if (menuCoinCounter) menuCoinCounter.innerText = totalCoins; playSFX('powerup', 0.8); particleSystem.spawn(0, -0.5, 5, 'dust', 30); updateShowcase(); } else { btnStart.innerText = "MOEDAS INSUFICIENTES!"; setTimeout(() => updateShowcase(), 1000); } } }); }
 if (btnChangeChar) { btnChangeChar.addEventListener('click', () => { resetEstadoMundo(); gameOverScreen.style.display = 'none'; mainMenu.style.display = 'block'; gameState = 'MENU'; updateShowcase(); btnChangeChar.blur(); }); }
 
 function atualizarUIEnergia() {
@@ -243,7 +375,27 @@ window.addEventListener('keydown', (event) => {
     if (gameState === 'GAME_OVER' && (key === ' ' || event.code === 'Space')) { event.preventDefault(); iniciarJogo(); return; }
     if (gameState !== 'PLAYING' || !player || hitStopTimer > 0) return;
 
-    if (key === 'c') cameraMode = (cameraMode === 'topDown') ? 'isometric' : 'topDown';
+    // ALTERNAR CÂMARAS VERDADEIRO (Req 2)
+    if (key === 'c') { 
+        cameraMode = (cameraMode === 'topDown') ? 'isometric' : 'topDown'; 
+        
+        // Remove listener da camara anterior
+        camera.remove(audioListener);
+        
+        // Troca para o Objeto Câmara certo
+        if (camera.isPerspectiveCamera) {
+            camera = orthoCamera;
+        } else {
+            camera = perspCamera;
+        }
+        
+        // Atribui o áudio e a renderização à nova câmara ativa
+        camera.add(audioListener);
+        renderScene.camera = camera;
+        controls.object = camera;
+        playSFX('powerup', 0.4);
+    }
+    
     if (key === ' ' || event.code === 'Space') { event.preventDefault(); if (player.abilityReady) { player.activateAbility(); atualizarUIEnergia(); playSFX('powerup', 0.6); } }
     
     const wasMoving = player.isMoving;
@@ -252,9 +404,6 @@ window.addEventListener('keydown', (event) => {
     atualizarUIEnergia();
 });
 
-// ==========================================
-// 6. LOOP DE ANIMAÇÃO
-// ==========================================
 function animate() {
     requestAnimationFrame(animate);
     const agora = performance.now();
@@ -270,9 +419,7 @@ function animate() {
         if (uiMem) {
             if (performance && performance.memory && performance.memory.usedJSHeapSize > 0) {
                 uiMem.innerText = Math.round(performance.memory.usedJSHeapSize / 1048576) + " MB";
-            } else {
-                uiMem.innerText = "N/A"; uiMem.style.color = "#888"; 
-            }
+            } else { uiMem.innerText = "N/A"; uiMem.style.color = "#888"; }
         }
         framesContados = 0; ultimoTempoMecanica = agora;
     }
@@ -282,7 +429,6 @@ function animate() {
     if (hitStopTimer > 0) {
         hitStopTimer -= delta;
     } else if (gameState === 'PLAYING' && player) {
-        
         if (activePowerUps.magnet > 0) activePowerUps.magnet -= delta;
         if (activePowerUps.time > 0) activePowerUps.time -= delta;
         atualizarUIEnergia();
@@ -311,6 +457,11 @@ function animate() {
         const baseElevation = world.getElevationAt ? world.getElevationAt(player.mesh.position.z) : 0;
         const idealLookAt = new THREE.Vector3(player.mesh.position.x, baseElevation, player.mesh.position.z);
         cameraTarget.lerp(idealLookAt, 8.0 * delta);
+
+        // Faz a luz e as sombras seguirem o jogador infinitamente
+        directionalLight.position.set(cameraTarget.x + 15, cameraTarget.y + 25, cameraTarget.z - 15);
+        directionalLight.target.position.copy(cameraTarget);
+        directionalLight.target.updateMatrixWorld();
         
         let idealCamPos = new THREE.Vector3(cameraTarget.x + currentOffset.x, cameraTarget.y + currentOffset.y, cameraTarget.z + currentOffset.z);
         camera.position.lerp(idealCamPos, 4.0 * delta); 
@@ -324,7 +475,6 @@ function animate() {
 
         world.update(worldDelta, player.mesh.position); 
 
-        // --- SISTEMA DE QUEDA EM CUBOS (VOXEL CRUMBLE) ---
         let isGameOver = false; let causeOfDeath = "";
         const px = player.mesh.position.x; const pz = player.mesh.position.z;
 
@@ -334,45 +484,34 @@ function animate() {
             const distanceBehind = lane.z - deathLineZ;
 
             if (distanceBehind > 2.0) {
-                // Já caiu por completo, invisível para poupar performance
                 lane.group.visible = false;
             } 
             else if (distanceBehind > 0.2) {
-                // GATILHO DA DESINTEGRAÇÃO (Executa só 1 vez por faixa)
                 if (!lane.crumbled) {
                     lane.crumbled = true;
-                    
-                    // Descobre a cor original do chão para as partículas combinarem
                     let pType = 'grass_crumble';
                     if (lane.type === 'road' || lane.type === 'railroad') pType = 'road_crumble';
                     else if (lane.type === 'river') pType = 'water';
                     else if (lane.type === 'acid_pit') pType = 'acid';
                     else if (lane.type === 'factory_floor' || lane.type === 'conveyor' || lane.type === 'transition_gate') pType = 'metal';
 
-                    // O primeiro elemento do grupo é sempre a base do chão. Vamos escondê-lo!
-                    if (lane.group.children[0]) lane.group.children[0].visible = false;
-                    
-                    // Spawna uma linha inteira de voxels que caem logo para baixo
+                    if (lane.group.children[0]) {
+                        lane.group.children[0].visible = false;
+                        lane.group.children[0].castShadow = false;
+                    }
                     for (let x = -20; x <= 20; x += 1.2) {
-                        particleSystem.spawn(x, -0.5, lane.z, pType, 1, true); // true = é chão a cair
+                        particleSystem.spawn(x, -0.5, lane.z, pType, 1, true); 
                     }
                 }
                 
-                // Faz as árvores, carros e troncos que restam na faixa cair para o abismo
-                lane.group.children.forEach((child, index) => {
-                    if (index > 0) { // Salta o índice 0 (o chão invisível)
-                        child.position.y -= delta * 15;
-                        child.rotation.x += delta * 2;
-                        child.rotation.z += delta * 2;
-                    }
-                });
+                // Movemos o contentor inteiro em vez das peças individuais!
+                lane.group.position.y -= delta * 15; 
+                lane.group.rotation.x += delta * 2; 
+                lane.group.rotation.z += delta * 2;
             }
         });
 
-        if (pz > deathLineZ + 1.0) { 
-            isGameOver = true; 
-            causeOfDeath = "O chão desapareceu!"; 
-        }
+        if (pz > deathLineZ + 1.0) { isGameOver = true; causeOfDeath = "O chão desapareceu!"; }
 
         const coinRadius = activePowerUps.magnet > 0 ? 6.0 : 0.8;
         world.coins.forEach(c => {
@@ -387,10 +526,7 @@ function animate() {
         world.powerUps.forEach(p => {
             if (!p.collected && Math.sqrt(Math.pow(px - p.mesh.position.x, 2) + Math.pow(pz - p.laneZ, 2)) < 0.8) {
                 p.collected = true; p.mesh.visible = false;
-                playSFX('powerup', 0.8);
-                triggerImpact(0.2, 0.05); 
-                particleSystem.spawn(px, 1.0, pz, 'dust', 20);
-                
+                playSFX('powerup', 0.8); triggerImpact(0.2, 0.05); particleSystem.spawn(px, 1.0, pz, 'dust', 20);
                 if (p.type === 'MAGNET') activePowerUps.magnet = 10;
                 else if (p.type === 'TIME') activePowerUps.time = 4;
                 else if (p.type === 'SHIELD') { activePowerUps.shield = 1; shieldVisual.visible = true; }
@@ -442,13 +578,32 @@ function animate() {
                 if ((currentLaneObj.type === 'river' || currentLaneObj.type === 'acid_pit' || currentLaneObj.type === 'abyss_gap') && !player.isMoving) {
                     let onPlatform = false;
                     for (const log of world.logs) {
+                        // Verifica se o jogador está em cima do tronco
                         if (log.laneZ === currentLaneZ && Math.abs(px - log.mesh.position.x) < (log.width / 2 + 0.1)) {
-                            onPlatform = true; if(activePowerUps.time <= 0) player.mesh.position.x += log.speed * log.direction * worldDelta * 60;
-                            if (Math.abs(player.mesh.position.x) > 15) { isGameOver = true; causeOfDeath = "Caíste no Abismo!"; }
+                            onPlatform = true; 
+                            
+                            // 1. Move o jogador horizontalmente com a correnteza
+                            if(activePowerUps.time <= 0) {
+                                player.mesh.position.x += log.speed * log.direction * worldDelta * 60;
+                            }
+                            
+                            // =========================================================
+                            // 2. A MAGIA ACONTECE AQUI: O BONECO ACOMPANHA O TRONCO!
+                            // Somamos 0.28 para as solas dos pés ficarem assentes na casca
+                            // =========================================================
+                            player.mesh.position.y = log.mesh.position.y + 0.28; 
+                            
+                            if (Math.abs(player.mesh.position.x) > 15) { 
+                                isGameOver = true; 
+                                causeOfDeath = "Caíste no Abismo!"; 
+                            }
                             break; 
                         }
                     }
-                    if (!onPlatform) { isGameOver = true; causeOfDeath = currentLaneObj.type === 'acid_pit' ? "Derreteste no Ácido!" : (currentLaneObj.type === 'abyss_gap' ? "Caíste no Abismo!" : "Afogaste-te!"); }
+                    if (!onPlatform) { 
+                        isGameOver = true; 
+                        causeOfDeath = currentLaneObj.type === 'acid_pit' ? "Derreteste no Ácido!" : (currentLaneObj.type === 'abyss_gap' ? "Caíste no Abismo!" : "Afogaste-te!"); 
+                    }
                 }
                 else if (currentLaneObj.type === 'laser' && !player.isMoving) {
                     const laser = world.lasers.find(l => l.laneZ === currentLaneZ);
@@ -485,17 +640,17 @@ function animate() {
         const causeElement = document.getElementById('death-reason-text');
         
         if (causeElement && (causeElement.innerText === "Caíste no Abismo!" || causeElement.innerText === "O chão desapareceu!")) { 
-            player.mesh.position.y -= delta * 15; 
-            player.mesh.rotation.x += delta * 5; 
+            player.mesh.position.y -= delta * 15; player.mesh.rotation.x += delta * 5; 
         }
         
         if (deathTimer <= 0) { gameState = 'GAME_OVER'; if (gameOverScreen) gameOverScreen.style.display = 'block'; if (gameUI) gameUI.style.display = 'none'; }
     } else if (gameState === 'STUDIO') {
         controls.update(); if (world) world.update(delta, {x: 0, y: 0, z: 0});
     } else {
+        // Menu Câmera Animada
         camera.position.lerp(new THREE.Vector3(8, 12, 12), 2.0 * delta); camera.lookAt(0, 0, -10);
         if (world) world.update(delta, {x: 0, y: 0, z: 0});
-        if (menuCharacter && menuCharacter.mesh.visible) menuCharacter.mesh.rotation.y += delta * 1.5; 
+        if (menuCharacter && menuCharacter.mesh.parent === scene) menuCharacter.mesh.rotation.y += delta * 1.5; 
         
         directionalLight.intensity = THREE.MathUtils.lerp(directionalLight.intensity, 1.8, delta * 3); ambientLight.intensity = THREE.MathUtils.lerp(ambientLight.intensity, 0.3, delta * 3); hemisphereLight.intensity = THREE.MathUtils.lerp(hemisphereLight.intensity, 0.6, delta * 3); scene.fog.color.lerp(new THREE.Color(0x6eb8ff), delta * 3); scene.background.lerp(new THREE.Color(0x6eb8ff), delta * 3);
     }
@@ -504,17 +659,29 @@ function animate() {
         const sx = (Math.random() - 0.5) * shakeIntensity;
         const sy = (Math.random() - 0.5) * shakeIntensity;
         camera.position.x += sx; camera.position.y += sy;
-        
-        // Sem Composer! Usa o renderer limpo.
-        renderer.render(scene, camera);
-        
+        composer.render();
         camera.position.x -= sx; camera.position.y -= sy;
         shakeIntensity *= 0.85; 
         if (shakeIntensity < 0.01) shakeIntensity = 0;
     } else {
-        renderer.render(scene, camera);
+        composer.render();
     }
 }
 
-window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+window.addEventListener('resize', () => { 
+    const aspect = window.innerWidth / window.innerHeight;
+    
+    // Atualiza ambas as câmaras ao dar resize na janela
+    perspCamera.aspect = aspect; 
+    perspCamera.updateProjectionMatrix(); 
+    
+    orthoCamera.left = -frustumSize * aspect / 2;
+    orthoCamera.right = frustumSize * aspect / 2;
+    orthoCamera.top = frustumSize / 2;
+    orthoCamera.bottom = -frustumSize / 2;
+    orthoCamera.updateProjectionMatrix();
+    
+    renderer.setSize(window.innerWidth, window.innerHeight); 
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
 animate();

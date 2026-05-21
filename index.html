@@ -5,6 +5,44 @@
     <title>Crossy Run 3D</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
+        #loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999; /* Garante que fica por cima de tudo */
+            color: white;
+            font-family: 'Courier New', Courier, monospace; /* Estilo Retro/Arcade */
+        }
+        .loading-title {
+            font-size: 3rem;
+            margin-bottom: 30px;
+            font-weight: bold;
+            color: #4CAF50;
+            text-shadow: 2px 2px 0px #000;
+        }
+        #loading-bar-container {
+            width: 400px;
+            height: 25px;
+            background: #333;
+            border: 3px solid #fff;
+            margin-top: 15px;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #loading-bar {
+            width: 0%;
+            height: 100%;
+            background: #4CAF50;
+            transition: width 0.1s ease-out;
+        }
+
         #info {
             position: absolute; top: 10px; width: 100%;
             text-align: center; color: white; font-family: sans-serif;
@@ -79,6 +117,14 @@
     </style>
 </head>
 <body>
+    <div id="loading-screen">
+        <div class="loading-title">CROSSY RUN 3D</div>
+        <div id="loading-text">A Carregar Assets... 0%</div>
+        <div id="loading-bar-container">
+            <div id="loading-bar"></div>
+        </div>
+    </div>
+
     <div id="info">Mover: WASD | Poder: ESPAÇO | Câmara: C</div>
 
     <div id="ui-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100;">

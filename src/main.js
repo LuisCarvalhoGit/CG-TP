@@ -424,10 +424,63 @@ const devCheats = {
     localStorage.setItem('crossyRun_unlocked', JSON.stringify(unlockedChars)); 
     updateShowcase(); 
     playSFX('crash', 0.5); // Feedback sonoro de "bloqueio"
-},
+  },
   exportarTodosOsModelos: () => {
-    /* Mantido Oculto por concisão, o mesmo de antes */
-  }
+    console.log("A preparar a exportação...");
+    const exporter = new GLTFExporter();
+    
+    // Criamos um grupo temporário que VAI para a cena
+    const palco = new THREE.Group();
+    scene.add(palco);
+
+    const espacamento = 8;
+    let x = 0, z = 0;
+
+    // Adiciona um de cada personagem
+    charList.forEach(c => {
+        const char = new Player(palco, c.id);
+        char.mesh.position.set(x, 0, z);
+        x += espacamento;
+    });
+
+    // Para os objetos do mundo, adicionamos uma instância de cada tipo
+    // Se a tua função addCar/etc não aceitar o palco, passa-lhe o 'palco'
+    const pData = { cars: [], logs: [], trains: [], conveyors: [], gears: [], chasers: [], coins: [], lasers: [], powerUps: [], obstacleXs: [] };
+    
+    // Adiciona um exemplar de cada coisa ao palco
+    world.addCar(palco, 0, false, pData); 
+    world.addLog(palco, pData);
+    // ... (podes adicionar aqui os outros, mas só com estes já testas o tamanho)
+
+    // IMPORTANTE: Forçar atualização das matrizes antes de exportar
+    palco.updateMatrixWorld(true);
+
+    const options = { binary: true };
+
+    exporter.parse(
+        palco,
+        (result) => {
+            const blob = new Blob([result], { type: 'application/octet-stream' });
+            const link = document.createElement('a');
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.href = URL.createObjectURL(blob);
+            link.download = 'crossy_run_assets.glb';
+            link.click();
+            
+            // Limpeza
+            scene.remove(palco);
+            document.body.removeChild(link);
+            console.log("Exportação concluída!");
+        },
+        (error) => {
+            console.error("Erro na exportação:", error);
+            scene.remove(palco);
+        },
+        options
+    );
+}
+
 }
 
 const cheatFolder = gui.addFolder('🛠️ Cheats e Extrator (DevTools)')

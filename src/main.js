@@ -939,15 +939,17 @@ function animate () {
     if (!isGameOver) {
       const zTolerance = 0.45
       for (const car of world.cars) {
+        if (car.isDestroyed) continue;
+
         if (
           Math.abs(pz - car.laneZ) < zTolerance &&
           Math.abs(px - car.mesh.position.x) < car.width / 2 + 0.3
         ) {
-          if (player.type === "GHOST" && player.isAbilityActive){
+          if (player.type === 'GHOST' && player.isAbilityActive) {
             continue;
-          }
-          else if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
+          } else if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
             car.speed = 0
+            car.isDestroyed = true 
             car.mesh.position.y += 15 * delta
             car.mesh.position.x += car.direction * 10 * delta
             car.mesh.rotation.z += 15 * delta
@@ -958,6 +960,7 @@ function animate () {
             activePowerUps.shield = 0
             shieldVisual.visible = false
             car.speed = 0
+            car.isDestroyed = true 
             car.mesh.position.y += 15 * delta
             particleSystem.spawn(px, 1.0, pz, 'crash', 15)
             playSFX('crash', 0.6)
@@ -971,15 +974,20 @@ function animate () {
       }
       if (!isGameOver) {
         for (const train of world.trains) {
+          
+          // NOVA LÓGICA: Hitbox precisa calculada com base na direção e tamanho real do modelo
+          const isHittingX = train.direction === 1 
+            ? (px < train.mesh.position.x + 3 && px > train.mesh.position.x - 14) // Movimento para a direita
+            : (px > train.mesh.position.x - 3 && px < train.mesh.position.x + 14); // Movimento para a esquerda
+
           if (
             train.state === 'PASSING' &&
             Math.abs(pz - train.laneZ) < zTolerance &&
-            Math.abs(px - train.mesh.position.x) < 18
+            isHittingX // Usamos a nossa nova hitbox aqui!
           ) {
-            if(player.type === 'GHOST' && player.isAbilityActive) {
+            if (player.type === 'GHOST' && player.isAbilityActive) {
               continue;
-            }
-            else if (activePowerUps.shield > 0) {
+            } else if (activePowerUps.shield > 0) {
               activePowerUps.shield = 0
               shieldVisual.visible = false
               train.state = 'IDLE'

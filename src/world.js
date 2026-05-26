@@ -583,6 +583,14 @@ export class World {
   }
 
   generateProceduralLane (z) {
+    if (this.currentEvent === 'SPAWN_END_GATE') {
+      this.lanesUntilEvent = 20 + Math.floor(Math.random() * 15)
+      this.currentEvent = 'NONE'
+      this.spawnOrRecycleLane(z, 'transition_gate', true, Math.abs(z), this.lastLaneType, 'NONE')
+      this.lastLaneType = 'transition_gate'
+      return
+    }
+
     if (this.eventLanesRemaining > 0) {
       this.eventLanesRemaining--
       let type
@@ -592,6 +600,7 @@ export class World {
         type = Math.random() > 0.4 ? 'abyss_gap' : 'abyss_safe'
       else if (this.currentEvent === 'BLACKOUT')
         type = Math.random() > 0.5 ? 'road' : 'grass'
+      
       this.spawnOrRecycleLane(
         z,
         type,
@@ -601,18 +610,10 @@ export class World {
         this.currentEvent
       )
       this.lastLaneType = type
+      
       if (this.eventLanesRemaining === 0) {
-        this.lanesUntilEvent = 20 + Math.floor(Math.random() * 15)
-        this.currentEvent = 'NONE'
-        this.spawnOrRecycleLane(
-          z - 1,
-          'transition_gate',
-          true,
-          Math.abs(z - 1),
-          type,
-          'NONE'
-        )
-        this.lastLaneType = 'transition_gate'
+        // CORREÇÃO: Em vez de forçar em z - 1, avisa o sistema para criar o portão no próximo ciclo
+        this.currentEvent = 'SPAWN_END_GATE'
       }
       return
     }

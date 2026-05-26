@@ -29,7 +29,7 @@ export class Player {
     this.jumpsToCharge = 15
     this.abilityReady = false
 
-    // NOVO: Lógica de Morte
+    // Lógica de Morte
     this.isDead = false
     this.causeOfDeath = ''
     this.deathProgress = 0
@@ -327,7 +327,7 @@ export class Player {
     }
   }
 
-  // NOVO: Método que despoleta a animação de morte
+  // Método que despoleta a animação de morte
   die (cause) {
     if (this.isDead) return
     this.isDead = true
@@ -351,7 +351,7 @@ export class Player {
         this.causeOfDeath === 'Esborrachado pelo Expresso!' ||
         this.causeOfDeath === 'Triturado pelas engrenagens!'
       ) {
-        // PANQUECA: Achata no Y, alarga no X e Z
+        // Achata no Y, alarga no X e Z
         this.mesh.scale.set(
           this.baseScale * (1 + p * 0.5),
           Math.max(0.05, this.baseScale * (1 - p * 2)),
@@ -361,12 +361,12 @@ export class Player {
         this.causeOfDeath === 'Afogaste-te!' ||
         this.causeOfDeath === 'Derreteste no Ácido!'
       ) {
-        // AFUNDAR: Afunda no chão e encolhe
+        // Afunda no chão e encolhe
         this.mesh.position.y -= delta * 1.5
         this.mesh.rotation.x += delta * 2
         this.mesh.scale.setScalar(Math.max(0.1, this.baseScale * (1 - p)))
       } else {
-        // VOO DRAMÁTICO: Levou uma machadada ou tiro do Drone
+        // Levou uma machadada ou tiro do Drone
         this.mesh.position.y += delta * 6
         this.mesh.position.z += delta * 4
         this.mesh.rotation.x -= delta * 15

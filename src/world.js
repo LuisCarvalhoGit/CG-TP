@@ -9,7 +9,6 @@ export class World {
     this.lanes = []
     this.laneWidth = 80
 
-    // NOVO: Pool de memória inteligente e indexado por tipo de pista
     this.lanePool = {}
 
     this.cars = []
@@ -612,7 +611,6 @@ export class World {
       this.lastLaneType = type
       
       if (this.eventLanesRemaining === 0) {
-        // CORREÇÃO: Em vez de forçar em z - 1, avisa o sistema para criar o portão no próximo ciclo
         this.currentEvent = 'SPAWN_END_GATE'
       }
       return
@@ -657,7 +655,6 @@ export class World {
       this.currentBiome = 'FACTORY'
   }
 
-  // A MÁGICA DO POOLING - ZERO ALOCAÇÕES DURANTE O JOGO
   spawnOrRecycleLane (z, type, isSafeZone, depth, prevType, eventName) {
     const poolKey = `${type}_${prevType || 'none'}_${isSafeZone}`
 
@@ -671,7 +668,7 @@ export class World {
       pooledLane.group.rotation.set(0, 0, 0)
       pooledLane.group.visible = true
 
-      // Re-ativa todos os objetos dinâmicos (carros, comboios) em vez de os recriar!
+      // Reativa todos os objetos dinâmicos (carros, comboios) em vez de os recriar!
       this.reRegisterPhysics(pooledLane, z, depth, eventName)
       this.lanes.push(pooledLane)
     } else {
@@ -988,8 +985,6 @@ export class World {
     const floorNeon = new THREE.Mesh(this.geos.gateFloorNeon, neonMat)
     floorNeon.rotation.x = -Math.PI / 2
     floorNeon.position.set(0, 0.01, 0)
-
-    // A RectAreaLight foi completamente removida!
 
     // Adicionamos apenas as malhas geométricas ao grupo
     gateGroup.add(mL, mR, floorNeon)
@@ -1895,7 +1890,6 @@ export class World {
         lane.group.visible = false
         this.limparReferenciasFisica(lane.z)
 
-        // GUARDA NA GAVETA CORRETA
         if (!this.lanePool[lane.poolKey]) this.lanePool[lane.poolKey] = []
         this.lanePool[lane.poolKey].push(lane)
 

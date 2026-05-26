@@ -975,7 +975,6 @@ function animate () {
       if (!isGameOver) {
         for (const train of world.trains) {
           
-          // NOVA LÓGICA: Hitbox precisa calculada com base na direção e tamanho real do modelo
           const isHittingX = train.direction === 1 
             ? (px < train.mesh.position.x + 3 && px > train.mesh.position.x - 14) // Movimento para a direita
             : (px > train.mesh.position.x - 3 && px < train.mesh.position.x + 14); // Movimento para a esquerda
@@ -983,7 +982,7 @@ function animate () {
           if (
             train.state === 'PASSING' &&
             Math.abs(pz - train.laneZ) < zTolerance &&
-            isHittingX // Usamos a nossa nova hitbox aqui!
+            isHittingX
           ) {
             if (player.type === 'GHOST' && player.isAbilityActive) {
               continue;
@@ -1171,9 +1170,7 @@ function animate () {
     controls.update()
     if (world) world.update(delta, { x: 0, y: 0, z: 0 })
   } else {
-    // ==================================================
-    // MENU DE SELECÇÃO
-    // ==================================================
+    
     // Câmara próxima do chão (Y=0.5) e mais para a frente (Z=2)
     camera.position.lerp(new THREE.Vector3(0, 0.5, 2), 2.0 * delta)
 

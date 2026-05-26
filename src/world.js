@@ -1770,123 +1770,113 @@ export class World {
       }
     })
     this.chasers.forEach(chaser => {
-      // 1. Se já estiver morto, faz a animação de cair/afundar e ignora o resto
-      if (chaser.state === 'DEAD') {
-        chaser.mesh.position.y -= delta * 5;
-        return; 
-      }
+      if (chaser.state === 'DEAD') {
+        chaser.mesh.position.y -= delta * 5;
+        return; 
+      }
 
-      const cX = chaser.mesh.position.x
-      const cZ = chaser.laneZ + chaser.mesh.position.z
-      const dx = playerPos.x - cX
-      const dz = playerPos.z - cZ
-      const dist = Math.sqrt(dx * dx + dz * dz)
+      const cX = chaser.mesh.position.x
+      const cZ = chaser.laneZ + chaser.mesh.position.z
+      const dx = playerPos.x - cX
+      const dz = playerPos.z - cZ
+      const dist = Math.sqrt(dx * dx + dz * dz)
 
-      // ==========================================
-      // LÓGICA DE MOVIMENTO DO CHASER
-      // ==========================================
-      if (chaser.state === 'PATROL') {
-        chaser.mesh.position.x += chaser.speed * chaser.patrolDir * delta * 60
-        if (chaser.mesh.position.x > 14 || chaser.mesh.position.x < -14)
-          chaser.patrolDir *= -1
-        chaser.mesh.rotation.y = chaser.patrolDir === 1 ? Math.PI / 2 : -Math.PI / 2
-        if (dist < 5) {
-          chaser.state = 'CHASE'
-          chaser.chaseTimer = 4.0
-          if (chaser.isFactory)
-            chaser.mesh.children[1].material.emissiveIntensity = 6
-        }
-      } else if (chaser.state === 'CHASE') {
-        chaser.chaseTimer -= delta
-        const angle = Math.atan2(dx, dz)
-        chaser.mesh.position.x += Math.sin(angle) * chaser.speed * 1.2 * delta * 60
-        chaser.mesh.position.z += Math.cos(angle) * chaser.speed * 1.2 * delta * 60
-        chaser.mesh.rotation.y = angle
-        if (chaser.chaseTimer <= 0 || dist > 12) {
-          chaser.state = 'COOLDOWN'
-          chaser.chaseTimer = 2.0
-          if (chaser.isFactory)
-            chaser.mesh.children[1].material.emissiveIntensity = 1
-        }
-      } else if (chaser.state === 'COOLDOWN') {
-        chaser.chaseTimer -= delta
-        chaser.mesh.position.z -= chaser.mesh.position.z * delta * 2
-        if (chaser.chaseTimer <= 0) chaser.state = 'PATROL'
-      }
+      if (chaser.state === 'PATROL') {
+        chaser.mesh.position.x += chaser.speed * chaser.patrolDir * delta * 60
+        if (chaser.mesh.position.x > 14 || chaser.mesh.position.x < -14)
+          chaser.patrolDir *= -1
+        chaser.mesh.rotation.y = chaser.patrolDir === 1 ? Math.PI / 2 : -Math.PI / 2
+        if (dist < 5) {
+          chaser.state = 'CHASE'
+          chaser.chaseTimer = 4.0
+          if (chaser.isFactory)
+            chaser.mesh.children[1].material.emissiveIntensity = 6
+        }
+      } else if (chaser.state === 'CHASE') {
+        chaser.chaseTimer -= delta
+        const angle = Math.atan2(dx, dz)
+        chaser.mesh.position.x += Math.sin(angle) * chaser.speed * 1.2 * delta * 60
+        chaser.mesh.position.z += Math.cos(angle) * chaser.speed * 1.2 * delta * 60
+        chaser.mesh.rotation.y = angle
+        if (chaser.chaseTimer <= 0 || dist > 12) {
+          chaser.state = 'COOLDOWN'
+          chaser.chaseTimer = 2.0
+          if (chaser.isFactory)
+            chaser.mesh.children[1].material.emissiveIntensity = 1
+        }
+      } else if (chaser.state === 'COOLDOWN') {
+        chaser.chaseTimer -= delta
+        chaser.mesh.position.z -= chaser.mesh.position.z * delta * 2
+        if (chaser.chaseTimer <= 0) chaser.state = 'PATROL'
+      }
 
-      // ==========================================
-      // NOVA LÓGICA: COLISÕES AMBIENTAIS
-      // ==========================================
-      let diedEnviroment = false
-      const zTol = 0.45
-      const currentLaneZ = Math.round(cZ)
-      const currentLaneObj = this.lanes.find(l => l.z === currentLaneZ)
+      let diedEnviroment = false
+      const zTol = 0.45
+      const currentLaneZ = Math.round(cZ)
+      const currentLaneObj = this.lanes.find(l => l.z === currentLaneZ)
 
-      // Colisão com Carros
-      for (const car of this.cars) {
-        if (Math.abs(cZ - car.laneZ) < zTol && Math.abs(cX - car.mesh.position.x) < car.width / 2 + 0.3) {
-          diedEnviroment = true; break;
-        }
-      }
+      // Colisão com Carros
+      for (const car of this.cars) {
+        if (Math.abs(cZ - car.laneZ) < zTol && Math.abs(cX - car.mesh.position.x) < car.width / 2 + 0.3) {
+          diedEnviroment = true; break;
+        }
+      }
 
-      // Colisão com Comboios
-      if (!diedEnviroment) {
-        for (const train of this.trains) {
-          if (train.state === 'PASSING' && Math.abs(cZ - train.laneZ) < zTol && Math.abs(cX - train.mesh.position.x) < 18) {
-            diedEnviroment = true; break;
-          }
-        }
-      }
+      // Colisão com Comboios
+      if (!diedEnviroment) {
+        for (const train of this.trains) {
+          if (train.state === 'PASSING' && Math.abs(cZ - train.laneZ) < zTol && Math.abs(cX - train.mesh.position.x) < 18) {
+            diedEnviroment = true; break;
+          }
+        }
+      }
 
-      // Cair na Água, Ácido, Abismo ou queimar num Laser
-      if (!diedEnviroment && currentLaneObj) {
-        if (currentLaneObj.type === 'river' || currentLaneObj.type === 'acid_pit' || currentLaneObj.type === 'abyss_gap') {
-          let onPlatform = false
-          for (const log of this.logs) {
-            if (log.laneZ === currentLaneZ && Math.abs(cX - log.mesh.position.x) < log.width / 2 + 0.1) {
-              onPlatform = true
-              // Faz o inimigo mover-se com o tronco para não cair na água
-              chaser.mesh.position.x += log.speed * log.direction * delta * 60
-              break
-            }
-          }
-          if (!onPlatform) diedEnviroment = true
-        } else if (currentLaneObj.type === 'laser') {
-          const laser = this.lasers.find(l => l.laneZ === currentLaneZ)
-          if (laser && laser.isOn) diedEnviroment = true
-        }
-      }
+      // Cair na Água, Ácido, Abismo ou queimar num Laser
+      if (!diedEnviroment && currentLaneObj) {
+        if (currentLaneObj.type === 'river' || currentLaneObj.type === 'acid_pit' || currentLaneObj.type === 'abyss_gap') {
+          let onPlatform = false
+          for (const log of this.logs) {
+            if (log.laneZ === currentLaneZ && Math.abs(cX - log.mesh.position.x) < log.width / 2 + 0.1) {
+              onPlatform = true
+              // Faz o inimigo mover-se com o tronco para não cair na água
+              chaser.mesh.position.x += log.speed * log.direction * delta * 60
+              break
+            }
+          }
+          if (!onPlatform) diedEnviroment = true
+        } else if (currentLaneObj.type === 'laser') {
+          const laser = this.lasers.find(l => l.laneZ === currentLaneZ)
+          if (laser && laser.isOn) diedEnviroment = true
+        }
+      }
 
-      if (diedEnviroment) {
-        chaser.state = 'DEAD'
-        return // Cancela a animação dos membros porque ele acabou de morrer
-      }
+      if (diedEnviroment) {
+        chaser.state = 'DEAD'
+        return // Cancela a animação dos membros porque ele acabou de morrer
+      }
 
-      // ==========================================
-      // ANIMAÇÃO DOS MEMBROS (Apenas se não for Drone)
-      // ==========================================
-      if (!chaser.isFactory) {
-        if (chaser.state === 'PATROL' || chaser.state === 'CHASE') {
-          const swingSpeed = chaser.state === 'CHASE' ? 18 : 10
-          const swingAngle = Math.sin(this.time * swingSpeed) * 0.7
-          chaser.leftLeg.rotation.x = swingAngle
-          chaser.rightLeg.rotation.x = -swingAngle
-        } else {
-          chaser.leftLeg.rotation.x = 0
-          chaser.rightLeg.rotation.x = 0
-        }
-        if (chaser.state === 'CHASE') {
-          chaser.rightArm.rotation.x = -Math.PI / 4 + Math.sin(this.time * 25) * 0.3
-          chaser.leftArm.rotation.x = Math.sin(this.time * 15) * 0.4
-        } else if (chaser.state === 'PATROL') {
-          chaser.rightArm.rotation.x = -Math.PI / 5
-          chaser.leftArm.rotation.x = Math.sin(this.time * 10) * 0.3
-        } else {
-          chaser.rightArm.rotation.x = -Math.PI / 5
-          chaser.leftArm.rotation.x = 0
-        }
-      }
-    })
+      if (!chaser.isFactory) {
+        if (chaser.state === 'PATROL' || chaser.state === 'CHASE') {
+          const swingSpeed = chaser.state === 'CHASE' ? 18 : 10
+          const swingAngle = Math.sin(this.time * swingSpeed) * 0.7
+          chaser.leftLeg.rotation.x = swingAngle
+          chaser.rightLeg.rotation.x = -swingAngle
+        } else {
+          chaser.leftLeg.rotation.x = 0
+          chaser.rightLeg.rotation.x = 0
+        }
+        if (chaser.state === 'CHASE') {
+          chaser.rightArm.rotation.x = -Math.PI / 4 + Math.sin(this.time * 25) * 0.3
+          chaser.leftArm.rotation.x = Math.sin(this.time * 15) * 0.4
+        } else if (chaser.state === 'PATROL') {
+          chaser.rightArm.rotation.x = -Math.PI / 5
+          chaser.leftArm.rotation.x = Math.sin(this.time * 10) * 0.3
+        } else {
+          chaser.rightArm.rotation.x = -Math.PI / 5
+          chaser.leftArm.rotation.x = 0
+        }
+      }
+    })
   }
 
   updateMap (playerZ) {

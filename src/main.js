@@ -943,7 +943,10 @@ function animate () {
           Math.abs(pz - car.laneZ) < zTolerance &&
           Math.abs(px - car.mesh.position.x) < car.width / 2 + 0.3
         ) {
-          if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
+          if (player.type === "GHOST" && player.isAbilityActive){
+            continue;
+          }
+          else if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
             car.speed = 0
             car.mesh.position.y += 15 * delta
             car.mesh.position.x += car.direction * 10 * delta
@@ -973,7 +976,10 @@ function animate () {
             Math.abs(pz - train.laneZ) < zTolerance &&
             Math.abs(px - train.mesh.position.x) < 18
           ) {
-            if (activePowerUps.shield > 0) {
+            if(player.type === 'GHOST' && player.isAbilityActive) {
+              continue;
+            }
+            else if (activePowerUps.shield > 0) {
               activePowerUps.shield = 0
               shieldVisual.visible = false
               train.state = 'IDLE'
@@ -1069,7 +1075,7 @@ function animate () {
         } else if (currentLaneObj.type === 'laser' && !player.isMoving) {
           const laser = world.lasers.find(l => l.laneZ === currentLaneZ)
           if (laser && laser.isOn) {
-            if (player.type === 'JUGGERNAUT' && player.isAbilityActive) {
+            if ((player.type === 'JUGGERNAUT' || player.type === 'GHOST') && player.isAbilityActive) {
             } else if (activePowerUps.shield > 0) {
               activePowerUps.shield = 0
               shieldVisual.visible = false

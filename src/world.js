@@ -9,7 +9,6 @@ export class World {
     this.lanes = []
     this.laneWidth = 80
 
-    // NOVO: Pool de memória inteligente e indexado por tipo de pista
     this.lanePool = {}
 
     this.cars = []
@@ -584,6 +583,14 @@ export class World {
   }
 
   generateProceduralLane (z) {
+    if (this.currentEvent === 'SPAWN_END_GATE') {
+      this.lanesUntilEvent = 20 + Math.floor(Math.random() * 15)
+      this.currentEvent = 'NONE'
+      this.spawnOrRecycleLane(z, 'transition_gate', true, Math.abs(z), this.lastLaneType, 'NONE')
+      this.lastLaneType = 'transition_gate'
+      return
+    }
+
     if (this.eventLanesRemaining > 0) {
       this.eventLanesRemaining--
       let type
@@ -593,6 +600,7 @@ export class World {
         type = Math.random() > 0.4 ? 'abyss_gap' : 'abyss_safe'
       else if (this.currentEvent === 'BLACKOUT')
         type = Math.random() > 0.5 ? 'road' : 'grass'
+      
       this.spawnOrRecycleLane(
         z,
         type,
@@ -602,18 +610,9 @@ export class World {
         this.currentEvent
       )
       this.lastLaneType = type
+      
       if (this.eventLanesRemaining === 0) {
-        this.lanesUntilEvent = 20 + Math.floor(Math.random() * 15)
-        this.currentEvent = 'NONE'
-        this.spawnOrRecycleLane(
-          z - 1,
-          'transition_gate',
-          true,
-          Math.abs(z - 1),
-          type,
-          'NONE'
-        )
-        this.lastLaneType = 'transition_gate'
+        this.currentEvent = 'SPAWN_END_GATE'
       }
       return
     }
@@ -657,7 +656,6 @@ export class World {
       this.currentBiome = 'FACTORY'
   }
 
-  // A MÁGICA DO POOLING - ZERO ALOCAÇÕES DURANTE O JOGO
   spawnOrRecycleLane (z, type, isSafeZone, depth, prevType, eventName) {
     const poolKey = `${type}_${prevType || 'none'}_${isSafeZone}`
 
@@ -671,7 +669,7 @@ export class World {
       pooledLane.group.rotation.set(0, 0, 0)
       pooledLane.group.visible = true
 
-      // Re-ativa todos os objetos dinâmicos (carros, comboios) em vez de os recriar!
+      // Reativa todos os objetos dinâmicos (carros, comboios) em vez de os recriar!
       this.reRegisterPhysics(pooledLane, z, depth, eventName)
       this.lanes.push(pooledLane)
     } else {
@@ -988,8 +986,6 @@ export class World {
     const floorNeon = new THREE.Mesh(this.geos.gateFloorNeon, neonMat)
     floorNeon.rotation.x = -Math.PI / 2
     floorNeon.position.set(0, 0.01, 0)
-
-    // A RectAreaLight foi completamente removida!
 
     // Adicionamos apenas as malhas geométricas ao grupo
     gateGroup.add(mL, mR, floorNeon)
@@ -1770,17 +1766,22 @@ export class World {
       }
     })
     this.chasers.forEach(chaser => {
+      if (chaser.state === 'DEAD') {
+        chaser.mesh.position.y -= delta * 5;
+        return; 
+      }
+
       const cX = chaser.mesh.position.x
       const cZ = chaser.laneZ + chaser.mesh.position.z
       const dx = playerPos.x - cX
       const dz = playerPos.z - cZ
       const dist = Math.sqrt(dx * dx + dz * dz)
+
       if (chaser.state === 'PATROL') {
         chaser.mesh.position.x += chaser.speed * chaser.patrolDir * delta * 60
         if (chaser.mesh.position.x > 14 || chaser.mesh.position.x < -14)
           chaser.patrolDir *= -1
-        chaser.mesh.rotation.y =
-          chaser.patrolDir === 1 ? Math.PI / 2 : -Math.PI / 2
+        chaser.mesh.rotation.y = chaser.patrolDir === 1 ? Math.PI / 2 : -Math.PI / 2
         if (dist < 5) {
           chaser.state = 'CHASE'
           chaser.chaseTimer = 4.0
@@ -1790,10 +1791,8 @@ export class World {
       } else if (chaser.state === 'CHASE') {
         chaser.chaseTimer -= delta
         const angle = Math.atan2(dx, dz)
-        chaser.mesh.position.x +=
-          Math.sin(angle) * chaser.speed * 1.2 * delta * 60
-        chaser.mesh.position.z +=
-          Math.cos(angle) * chaser.speed * 1.2 * delta * 60
+        chaser.mesh.position.x += Math.sin(angle) * chaser.speed * 1.2 * delta * 60
+        chaser.mesh.position.z += Math.cos(angle) * chaser.speed * 1.2 * delta * 60
         chaser.mesh.rotation.y = angle
         if (chaser.chaseTimer <= 0 || dist > 12) {
           chaser.state = 'COOLDOWN'
@@ -1806,6 +1805,52 @@ export class World {
         chaser.mesh.position.z -= chaser.mesh.position.z * delta * 2
         if (chaser.chaseTimer <= 0) chaser.state = 'PATROL'
       }
+
+      let diedEnviroment = false
+      const zTol = 0.45
+      const currentLaneZ = Math.round(cZ)
+      const currentLaneObj = this.lanes.find(l => l.z === currentLaneZ)
+
+      // Colisão com Carros
+      for (const car of this.cars) {
+        if (Math.abs(cZ - car.laneZ) < zTol && Math.abs(cX - car.mesh.position.x) < car.width / 2 + 0.3) {
+          diedEnviroment = true; break;
+        }
+      }
+
+      // Colisão com Comboios
+      if (!diedEnviroment) {
+        for (const train of this.trains) {
+          if (train.state === 'PASSING' && Math.abs(cZ - train.laneZ) < zTol && Math.abs(cX - train.mesh.position.x) < 18) {
+            diedEnviroment = true; break;
+          }
+        }
+      }
+
+      // Cair na Água, Ácido, Abismo ou queimar num Laser
+      if (!diedEnviroment && currentLaneObj) {
+        if (currentLaneObj.type === 'river' || currentLaneObj.type === 'acid_pit' || currentLaneObj.type === 'abyss_gap') {
+          let onPlatform = false
+          for (const log of this.logs) {
+            if (log.laneZ === currentLaneZ && Math.abs(cX - log.mesh.position.x) < log.width / 2 + 0.1) {
+              onPlatform = true
+              // Faz o inimigo mover-se com o tronco para não cair na água
+              chaser.mesh.position.x += log.speed * log.direction * delta * 60
+              break
+            }
+          }
+          if (!onPlatform) diedEnviroment = true
+        } else if (currentLaneObj.type === 'laser') {
+          const laser = this.lasers.find(l => l.laneZ === currentLaneZ)
+          if (laser && laser.isOn) diedEnviroment = true
+        }
+      }
+
+      if (diedEnviroment) {
+        chaser.state = 'DEAD'
+        return // Cancela a animação dos membros porque ele acabou de morrer
+      }
+
       if (!chaser.isFactory) {
         if (chaser.state === 'PATROL' || chaser.state === 'CHASE') {
           const swingSpeed = chaser.state === 'CHASE' ? 18 : 10
@@ -1817,8 +1862,7 @@ export class World {
           chaser.rightLeg.rotation.x = 0
         }
         if (chaser.state === 'CHASE') {
-          chaser.rightArm.rotation.x =
-            -Math.PI / 4 + Math.sin(this.time * 25) * 0.3
+          chaser.rightArm.rotation.x = -Math.PI / 4 + Math.sin(this.time * 25) * 0.3
           chaser.leftArm.rotation.x = Math.sin(this.time * 15) * 0.4
         } else if (chaser.state === 'PATROL') {
           chaser.rightArm.rotation.x = -Math.PI / 5
@@ -1846,7 +1890,6 @@ export class World {
         lane.group.visible = false
         this.limparReferenciasFisica(lane.z)
 
-        // GUARDA NA GAVETA CORRETA
         if (!this.lanePool[lane.poolKey]) this.lanePool[lane.poolKey] = []
         this.lanePool[lane.poolKey].push(lane)
 

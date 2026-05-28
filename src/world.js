@@ -54,7 +54,8 @@ export class World {
     const relvaTex = textureLoader.load('./textures/relva.jpg')
     relvaTex.wrapS = THREE.RepeatWrapping
     relvaTex.wrapT = THREE.RepeatWrapping
-    relvaTex.repeat.set(15, 2)
+    // Ajustado para reduzir esticamento horizontal/vertical da textura
+    relvaTex.repeat.set(40, 0.5)
     const asfaltoTex = textureLoader.load('./textures/asfalto.jpg')
     asfaltoTex.wrapS = THREE.RepeatWrapping
     asfaltoTex.wrapT = THREE.RepeatWrapping
@@ -1554,7 +1555,6 @@ export class World {
       }
     }
     positions.needsUpdate = true
-    geo.computeVertexNormals()
   }
   createBirds () {
     for (let i = 0; i < 6; i++) {
@@ -1832,13 +1832,13 @@ export class World {
   }
 
   updateMap (playerZ) {
-    const targetZ = Math.floor(playerZ) - 35
+    const targetZ = Math.floor(playerZ) - 30
     while (this.furthestZ > targetZ) {
       this.furthestZ--
       this.generateProceduralLane(this.furthestZ)
     }
 
-    const cleanupZ = Math.floor(playerZ) + 30
+    const cleanupZ = Math.floor(playerZ) + 25
 
     for (let i = this.lanes.length - 1; i >= 0; i--) {
       const lane = this.lanes[i]

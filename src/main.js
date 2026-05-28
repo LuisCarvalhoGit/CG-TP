@@ -118,7 +118,7 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance'
 })
 renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+renderer.setPixelRatio(1)
 
 const composer = new EffectComposer(renderer)
 const renderScene = new RenderPass(scene, camera)
@@ -259,7 +259,7 @@ scene.add(ambientLight)
 const directionalLight = new THREE.DirectionalLight(0xfff4e5, 1.8)
 directionalLight.position.set(15, 25, -15)
 directionalLight.castShadow = true
-directionalLight.shadow.mapSize.set(1024, 1024)
+directionalLight.shadow.mapSize.set(512, 512)
 directionalLight.shadow.camera.near = 0.5
 directionalLight.shadow.camera.far = 50
 directionalLight.shadow.camera.left = -25
@@ -450,7 +450,7 @@ const devCheats = {
     // Adiciona um exemplar de cada coisa ao palco
     world.addCar(palco, 0, false, pData); 
     world.addLog(palco, pData);
-    // ... (podes adicionar aqui os outros, mas só com estes já testas o tamanho)
+    // adicionar mais
 
     // IMPORTANTE: Forçar atualização das matrizes antes de exportar
     palco.updateMatrixWorld(true);
@@ -881,7 +881,7 @@ function animate () {
             lane.group.children[0].visible = false
             lane.group.children[0].castShadow = false
           }
-          for (let x = -20; x <= 20; x += 1.2) {
+          for (let x = -20; x <= 20; x += 2.0) {
             particleSystem.spawn(x, -0.5, lane.z, pType, 1, true)
           }
         }
